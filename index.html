@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<title>飲酒カウンター v2 — 賢く飲んで、明日の自分にありがとう</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#1a1e26; --card2:#232936; --line:#2e3646;
+    --txt:#eef0f5; --sub:#93a0b4;
+    --amber:#f5a623; --cream:#f5e9d0; --green:#3ecf8e; --red:#ff5c5c; --blue:#5ca8ff;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html{font-size:16px}
+  body{background:var(--bg);color:var(--txt);
+       font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+       max-width:480px;margin:0 auto;padding:10px 14px 92px;user-select:none}
+  h1{display:flex;align-items:center;gap:8px;font-size:18px;padding:4px 0 2px}
+  h1 img{width:34px;height:34px}
+  .tagline{color:var(--sub);font-size:11px;margin-bottom:10px}
+  .num{font-variant-numeric:tabular-nums}
+
+  /* カード共通 */
+  .card{background:var(--card);border-radius:16px;padding:14px;margin-bottom:12px}
+  .card h2{font-size:13px;color:var(--sub);font-weight:600;margin-bottom:8px}
+
+  /* ダッシュボード */
+  .bigrow{display:flex;justify-content:space-around;align-items:flex-end;margin-bottom:10px}
+  .metric{text-align:center}
+  .metric .v{font-size:34px;font-weight:800;line-height:1.1}
+  .metric .u{font-size:11px;color:var(--sub)}
+  .metric.small .v{font-size:20px}
+  .bar{height:14px;background:var(--card2);border-radius:7px;overflow:hidden;margin:4px 0 5px}
+  .bar>div{height:100%;border-radius:7px;background:var(--green);width:0%;transition:width .4s,background .4s}
+  .barlabel{display:flex;justify-content:space-between;font-size:11px;color:var(--sub)}
+  .banner{border-radius:12px;padding:9px 12px;font-size:13px;font-weight:600;margin-top:9px;display:none;line-height:1.5}
+  .banner.show{display:flex;align-items:center;gap:8px}
+  .banner.warn{background:rgba(245,166,35,.14);color:var(--amber);border:1px solid rgba(245,166,35,.5)}
+  .banner.stop{background:rgba(255,92,92,.14);color:var(--red);border:1px solid rgba(255,92,92,.5)}
+  .banner.pace,.banner.band{background:rgba(92,168,255,.1);color:var(--blue);border:1px solid rgba(92,168,255,.4)}
+  .banner img{width:34px;height:34px;flex:none}
+
+  /* BACグラフ */
+  canvas#bacCanvas{width:100%;height:150px;display:block;margin:4px 0 8px}
+  .eta{background:var(--card2);border-radius:12px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;position:relative}
+  .eta .t{font-size:20px;font-weight:800}
+  .eta .s{font-size:11px;color:var(--sub)}
+  .etadelta{position:absolute;right:12px;top:-12px;background:var(--amber);color:#1a1200;font-weight:800;
+            font-size:13px;border-radius:10px;padding:3px 9px;opacity:0;transition:opacity .3s,transform .6s}
+  .etadelta.show{opacity:1;transform:translateY(-6px)}
+  .stagebox{display:flex;justify-content:space-between;align-items:center;margin-top:9px;background:var(--card2);border-radius:12px;padding:9px 14px}
+  .stagebox .n{font-size:15px;font-weight:700}
+  .stagebox .b{font-size:11px;color:var(--sub)}
+  .chip{display:inline-block;background:rgba(92,168,255,.12);color:var(--blue);border-radius:9px;
+        padding:4px 10px;font-size:12px;font-weight:600;margin-top:9px;cursor:pointer}
+
+  /* ドリンクグリッド */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:11px}
+  .drink{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 4px 10px;color:var(--txt);
+         font-size:13.5px;font-weight:700;cursor:pointer;transition:transform .06s;min-height:44px}
+  .drink:active{transform:scale(.93);background:var(--card2)}
+  .drink .emoji{font-size:25px;display:block;margin-bottom:3px}
+  .drink .g{display:block;font-size:11px;color:var(--amber);font-weight:600;margin-top:2px}
+  .rowbtns{display:flex;gap:9px;margin-bottom:11px}
+  .rowbtns button{flex:1;padding:13px 4px;border:none;border-radius:12px;font-size:13.5px;font-weight:700;cursor:pointer;min-height:44px}
+  .water{background:rgba(92,168,255,.16);color:var(--blue)}
+  .undo{background:var(--card);color:var(--sub);border:1px solid var(--line)}
+  .end{background:rgba(245,166,35,.16);color:var(--amber)}
+  .sos{width:100%;padding:10px;border:1px dashed rgba(255,92,92,.55);border-radius:12px;background:none;
+       color:var(--red);font-size:12.5px;font-weight:600;margin-bottom:11px;cursor:pointer}
+
+  /* ログ */
+  .log ul{list-style:none;max-height:170px;overflow-y:auto}
+  .log li{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;border-bottom:1px solid var(--card2)}
+  .log li span:last-child{color:var(--sub);font-size:12px}
+  .empty{display:flex;align-items:center;gap:10px;color:var(--sub);font-size:13px}
+  .empty img{width:56px;height:56px}
+
+  /* タブ */
+  .tabs{position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;display:flex;z-index:50;
+        background:rgba(20,24,32,.97);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  .tabs button{flex:1;padding:11px 0 9px;background:none;border:none;color:var(--sub);font-size:11px;font-weight:700;cursor:pointer}
+  .tabs button.on{color:var(--amber)}
+  .tabs button .ti{display:block;font-size:20px;margin-bottom:1px}
+  .panel{display:none} .panel.on{display:block}
+
+  /* クイズ */
+  .qhead{display:flex;justify-content:space-between;font-size:12px;color:var(--sub);margin-bottom:8px}
+  .qtimer{height:6px;background:var(--card2);border-radius:3px;overflow:hidden;margin-bottom:12px}
+  .qtimer>div{height:100%;background:var(--amber);width:100%}
+  .qtext{text-align:center;font-size:38px;font-weight:800;padding:14px 0 6px;min-height:76px}
+  .qsub{text-align:center;font-size:12px;color:var(--sub);margin-bottom:8px}
+  .qans{text-align:center;font-size:28px;font-weight:800;min-height:40px;letter-spacing:.1em;
+        border-bottom:2px solid var(--line);margin:0 40px 14px}
+  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .pad button{padding:15px 0;border:none;border-radius:12px;background:var(--card2);color:var(--txt);
+              font-size:21px;font-weight:700;cursor:pointer;min-height:44px}
+  .pad button:active{background:var(--line)}
+  .pad .ok{background:var(--amber);color:#221600}
+  .giveup{width:100%;margin-top:10px;padding:11px;border:none;border-radius:11px;background:var(--card);
+          color:var(--sub);font-size:13px;cursor:pointer;border:1px solid var(--line)}
+  .iqbig{text-align:center;padding:6px 0}
+  .iqbig .n{font-size:64px;font-weight:900;line-height:1}
+  .iqbig .l{font-size:12px;color:var(--sub)}
+  .iqbig .tier{font-size:14px;font-weight:700;color:var(--amber);margin-top:4px}
+  .iqcomment{text-align:center;font-size:14px;line-height:1.7;background:var(--card2);border-radius:12px;padding:11px;margin-top:10px}
+  .cogwarn{margin-top:10px;border-radius:12px;padding:10px 12px;font-size:13px;font-weight:700;display:none}
+  .cogwarn.red{display:block;background:rgba(255,92,92,.14);color:var(--red);border:1px solid rgba(255,92,92,.5)}
+  .trend{font-size:13px;color:var(--sub);text-align:center;margin-top:9px}
+  .bigbtn{width:100%;padding:14px;border:none;border-radius:13px;background:var(--amber);color:#221600;
+          font-size:15px;font-weight:800;cursor:pointer;margin-top:11px;min-height:44px}
+  .bigbtn.ghost{background:var(--card2);color:var(--txt)}
+
+  /* 履歴 */
+  .statrow{display:flex;gap:9px;margin-bottom:11px}
+  .stat{flex:1;background:var(--card);border-radius:12px;padding:11px 6px;text-align:center}
+  .stat .v{font-size:19px;font-weight:800}
+  .stat .l{font-size:10.5px;color:var(--sub)}
+  .hist-day{display:flex;align-items:center;gap:7px;margin-bottom:7px;font-size:12.5px}
+  .hist-day .d{width:46px;color:var(--sub)}
+  .hist-day .hb{flex:1;height:15px;background:var(--card2);border-radius:8px;overflow:hidden}
+  .hist-day .hb>div{height:100%;border-radius:8px}
+  .hist-day .n2{width:64px;text-align:right}
+  .hist-day .gr{display:inline-block;width:17px;text-align:center;border-radius:5px;font-size:10.5px;font-weight:800;margin-left:3px}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:7px 0}
+  .chips button{padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:var(--card2);
+                color:var(--txt);font-size:12.5px;cursor:pointer}
+  .chips button.sel{background:rgba(245,166,35,.2);border-color:var(--amber);color:var(--amber);font-weight:700}
+  .slider-row{display:flex;align-items:center;gap:10px;margin:7px 0}
+  .slider-row label{font-size:13px;width:76px}
+  .slider-row input[type=range]{flex:1;accent-color:var(--amber)}
+  .slider-row .val{width:24px;text-align:right;font-weight:800}
+  textarea,input[type=text]{width:100%;background:var(--card2);border:1px solid var(--line);border-radius:10px;
+        color:var(--txt);padding:9px;font-size:14px;font-family:inherit}
+  .failline{background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.4);border-radius:12px;padding:11px;margin-top:10px}
+  .failline .fv{font-size:24px;font-weight:900;color:var(--amber)}
+
+  /* 設定 */
+  .field{background:var(--card);border-radius:12px;padding:11px 14px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center}
+  .field label{font-size:14px}
+  .field input,.field select{background:var(--card2);border:1px solid var(--line);border-radius:9px;color:var(--txt);
+        padding:9px 10px;font-size:16px;width:110px;text-align:right}
+  .note{font-size:11px;color:var(--sub);line-height:1.7;margin-top:10px}
+  .dangerbtn{width:100%;padding:12px;border:none;border-radius:12px;background:rgba(255,92,92,.13);color:var(--red);
+             font-size:14px;font-weight:700;margin-top:9px;cursor:pointer}
+
+  /* モーダル */
+  .overlay{position:fixed;inset:0;background:rgba(8,10,14,.85);z-index:100;display:none;
+           align-items:flex-end;justify-content:center;backdrop-filter:blur(3px)}
+  .overlay.show{display:flex}
+  .sheet{background:var(--card);border-radius:22px 22px 0 0;width:100%;max-width:480px;
+         max-height:88vh;overflow-y:auto;padding:20px 18px calc(20px + env(safe-area-inset-bottom))}
+  .gradebig{text-align:center;font-size:76px;font-weight:900;line-height:1;color:var(--amber)}
+  .cardtitle{text-align:center;font-size:17px;font-weight:800;margin-bottom:4px}
+  .badges{margin:12px 0}
+  .badges li{list-style:none;display:flex;justify-content:space-between;padding:7px 4px;border-bottom:1px solid var(--card2);font-size:14px}
+  .bok{color:var(--green);font-weight:800} .bng{color:var(--red);font-weight:800} .bskip{color:var(--amber);font-weight:700;font-size:12px}
+  .titlebox{text-align:center;background:var(--card2);border-radius:12px;padding:10px;margin:10px 0;font-size:15px;font-weight:800}
+  .streak{text-align:center;color:var(--amber);font-weight:700;font-size:13.5px;margin-bottom:6px}
+  .mascot-c{display:block;margin:0 auto 6px;width:84px;height:84px}
+
+  /* 安全モード */
+  .safety{position:fixed;inset:0;background:#160b0b;z-index:200;display:none;overflow-y:auto;
+          padding:26px 20px calc(26px + env(safe-area-inset-bottom))}
+  .safety.show{display:block}
+  .safety h2{color:var(--red);font-size:21px;margin-bottom:12px}
+  .safety p{font-size:15px;line-height:1.9;margin-bottom:14px}
+  .safety ol{margin:0 0 16px 20px;font-size:15px;line-height:2.1}
+  .safety .em{color:var(--red);font-weight:800}
+  .safety button{width:100%;padding:14px;border:none;border-radius:13px;background:var(--card2);color:var(--txt);font-size:14px;font-weight:700;cursor:pointer}
+
+  /* トースト */
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:96px;background:rgba(92,168,255,.95);color:#04121f;
+         font-size:13.5px;font-weight:700;border-radius:12px;padding:11px 16px;z-index:150;display:flex;align-items:center;gap:8px;
+         opacity:0;transition:opacity .3s;max-width:88%;pointer-events:none}
+  .toast.show{opacity:1}
+  .toast img{width:30px;height:30px}
+  .emoji-fb{font-size:26px}
+</style>
+</head>
+<body>
+
+<h1><img src="assets/logo.webp" alt="" onerror="fb(this,'🍺')">飲酒カウンター <span style="color:var(--amber)">v2</span></h1>
+<div class="tagline">賢く飲んで、明日の自分にありがとう — 飲み方を見える化して、楽しくスマートに</div>
+
+<!-- ================= 記録タブ ================= -->
+<div class="panel on" id="p-rec">
+  <div class="card">
+    <div class="bigrow">
+      <div class="metric"><div class="v num" id="totalG">0</div><div class="u">純アルコール g</div></div>
+      <div class="metric small"><div class="v num" id="cups">0杯</div><div class="u">ドリンク数</div></div>
+      <div class="metric small"><div class="v num" id="elapsed">--:--</div><div class="u">経過時間</div></div>
+    </div>
+    <div class="bar"><div id="limitBar"></div></div>
+    <div class="barlabel"><span>0g</span><span id="limitLbl">上限 40g</span></div>
+    <div class="banner" id="limitBanner"></div>
+    <div class="banner pace" id="paceBanner"></div>
+    <div class="banner band" id="bandBanner"></div>
+
+    <canvas id="bacCanvas"></canvas>
+    <div class="eta">
+      <div><div class="t num" id="etaTime">—</div><div class="s" id="etaSub">シラフ予測（飲むと後ろにずれます）</div></div>
+      <div style="font-size:26px">🌅</div>
+      <div class="etadelta num" id="etaDelta"></div>
+    </div>
+    <div class="stagebox">
+      <div><div class="n" id="stageName">シラフ</div><div class="b num" id="stageBac">推定BAC 0.000%</div></div>
+      <div style="font-size:28px" id="stageEmoji">😀</div>
+    </div>
+    <div class="chip" id="quizNudge" style="display:none" onclick="tab('chk')">🧠 そろそろチェックしてみる？</div>
+    <div class="chip num" id="iqChip" style="display:none"></div>
+  </div>
+
+  <div class="grid" id="drinkGrid"></div>
+
+  <div class="rowbtns">
+    <button class="water" onclick="addWater()">💧 水を飲んだ</button>
+    <button class="undo" onclick="undoLast()">↩︎ 取り消し</button>
+    <button class="end" onclick="openScorecard()">🏁 終了</button>
+  </div>
+  <button class="sos" onclick="openSafety()">🆘 気分が悪いとき（安全ガイドを表示）</button>
+
+  <div class="card log">
+    <h2>今夜のログ</h2>
+    <ul id="logList"></ul>
+  </div>
+</div>
+
+<!-- ================= チェックタブ ================= -->
+<div class="panel" id="p-chk">
+  <div class="card" id="quizIdle">
+    <h2>認知機能チェック（計算テスト・全6問）</h2>
+    <div class="empty" style="margin-bottom:10px">
+      <img src="assets/mascot-quiz.webp" alt="" onerror="fb(this,'🧠')">
+      <span>酔うと計算力は正直に落ちます。<br>数字で自分を確かめよう。</span>
+    </div>
+    <div id="baselineStatus" class="note"></div>
+    <button class="bigbtn" onclick="startQuiz(false)">🧠 いまの飲みIQを測る</button>
+    <div class="trend" id="quizTrend"></div>
+  </div>
+
+  <div class="card" id="quizRun" style="display:none">
+    <div class="qhead"><span id="qNo">問題 1/6</span><span id="qLv">レベル 2</span></div>
+    <div class="qtimer"><div id="qTimerBar"></div></div>
+    <div class="qtext num" id="qText"></div>
+    <div class="qsub" id="qSub"></div>
+    <div class="qans num" id="qAns">&nbsp;</div>
+    <div class="pad">
+      <button onclick="key(7)">7</button><button onclick="key(8)">8</button><button onclick="key(9)">9</button>
+      <button onclick="key(4)">4</button><button onclick="key(5)">5</button><button onclick="key(6)">6</button>
+      <button onclick="key(1)">1</button><button onclick="key(2)">2</button><button onclick="key(3)">3</button>
+      <button onclick="keySign()">±</button><button onclick="key(0)">0</button><button onclick="keyDel()">⌫</button>
+      <button class="ok" style="grid-column:1/4" onclick="submitAns()">回答する</button>
+    </div>
+    <button class="giveup" onclick="giveUp()">わからない（次へ）</button>
+  </div>
+
+  <div class="card" id="quizResult" style="display:none"></div>
+</div>
+
+<!-- ================= 履歴タブ ================= -->
+<div class="panel" id="p-his">
+  <div class="statrow">
+    <div class="stat"><div class="v num" id="week7">0g</div><div class="l">直近7日合計</div></div>
+    <div class="stat"><div class="v num" id="dryDays">0日</div><div class="l">休肝日 / 7日</div></div>
+    <div class="stat"><div class="v num" id="avgDay">0g</div><div class="l">飲酒日平均</div></div>
+  </div>
+
+  <div class="card" id="reviewCard" style="display:none"></div>
+
+  <div class="card"><h2>14日間の記録</h2><div id="histBars"></div></div>
+
+  <div class="card">
+    <h2>分析・失敗ライン</h2>
+    <div id="symptomStats" class="note">振り返りが3件たまると、症状と飲酒量の関係を表示します。</div>
+    <div id="failLine"></div>
+  </div>
+</div>
+
+<!-- ================= 設定タブ ================= -->
+<div class="panel" id="p-set">
+  <div class="field"><label>体重 (kg)</label><input type="number" id="sWeight" min="30" max="200" step="1"></div>
+  <div class="field"><label>性別（BAC推定用）</label>
+    <select id="sSex"><option value="m">男性</option><option value="f">女性</option></select></div>
+  <div class="field"><label>今夜の上限 (純アルコールg)</label><input type="number" id="sLimit" min="10" max="150" step="5"></div>
+  <div class="field"><label>ペース警告 (g/時)</label><input type="number" id="sPace" min="5" max="100" step="5"></div>
+
+  <div class="card">
+    <h2>基準テスト（シラフの時に実施）</h2>
+    <div class="note" id="baseNote" style="margin:0 0 9px"></div>
+    <button class="bigbtn ghost" onclick="startQuiz(true)">📏 基準テストを実施する</button>
+  </div>
+
+  <div class="card">
+    <h2>データ</h2>
+    <button class="bigbtn ghost" onclick="exportData()">⬇️ データのエクスポート（JSON）</button>
+    <button class="dangerbtn" onclick="clearAll()">履歴と振り返りをすべて削除</button>
+  </div>
+
+  <div class="note">
+    ・純アルコール量(g) = 容量(ml) × 度数(%) ÷ 100 × 0.8<br>
+    ・BACとシラフ予測はWidmark式に基づく<b>粗い推定</b>です。体調・空腹・加齢・服薬などで実際の酔いは
+    これより強く出ることがあります。<br>
+    ・飲みIQ・認知チェックは医学的な知能検査・認知機能検査ではなく、シラフの自分との比較による
+    セルフモニタリングです。<br>
+    ・<b>運転可否や医学的判断には使えません。飲んだら乗らない。</b><br>
+    ・すべてのデータは端末内（localStorage）のみに保存され、外部送信は一切ありません。
+  </div>
+</div>
+
+<!-- タブバー -->
+<div class="tabs">
+  <button class="on" id="tb-rec" onclick="tab('rec')"><span class="ti">🍻</span>記録</button>
+  <button id="tb-chk" onclick="tab('chk')"><span class="ti">🧠</span>チェック</button>
+  <button id="tb-his" onclick="tab('his')"><span class="ti">📊</span>履歴</button>
+  <button id="tb-set" onclick="tab('set')"><span class="ti">⚙️</span>設定</button>
+</div>
+
+<!-- 成績表モーダル -->
+<div class="overlay" id="scOverlay"><div class="sheet" id="scSheet"></div></div>
+
+<!-- 安全モード -->
+<div class="safety" id="safety">
+  <h2>安全がいちばん。無理は禁物です。</h2>
+  <p id="safetyText"></p>
+  <ol>
+    <li>追加の飲酒は<span class="em">絶対にやめる</span></li>
+    <li><span class="em">一人にならない</span>。周囲の人に助けを求める</li>
+    <li>横向きなど<span class="em">誤嚥しにくい姿勢</span>をとる</li>
+    <li>呼吸・呼びかけへの反応を確認する</li>
+    <li>反応が悪い・呼吸がおかしい・繰り返し吐く場合は<span class="em">ためらわず119</span></li>
+  </ol>
+  <p class="note" style="font-size:12.5px">水は「意識がはっきりしていて、自力で安全に飲める場合」だけ少量ずつ。
+  意識が悪い人に無理に飲ませないでください。帰宅は症状が軽い場合のみ、可能なら誰かと一緒に。</p>
+  <button onclick="closeSafety()">表示を閉じる</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="logic.js"></script>
+<script>
+"use strict";
+/* ============ ユーティリティ ============ */
+const $ = id => document.getElementById(id);
+const pad2 = n => String(n).padStart(2, "0");
+const hm = t => { const d = new Date(t); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); };
+function fb(img, emoji){ const s = document.createElement("span"); s.className = "emoji-fb"; s.textContent = emoji; img.replaceWith(s); }
+window.fb = fb;
+
+/* ============ 状態（localStorage破損時はキー単位でフォールバック） ============ */
+function safeGet(key, def){
+  try { const v = JSON.parse(localStorage.getItem(key)); return v == null ? def : v; }
+  catch { return def; }
+}
+let settings = sanitizeSettings(safeGet("dcSettings", null));
+let session  = safeGet("dcSession", null) || { start: null, log: [], quizzes: [] };
+if (!Array.isArray(session.quizzes)) session.quizzes = [];
+let history  = safeGet("dcHistory", []);
+let reviews  = safeGet("dcReviews", []);
+function save(){
+  localStorage.setItem("dcSettings", JSON.stringify(settings));
+  localStorage.setItem("dcSession",  JSON.stringify(session));
+  localStorage.setItem("dcHistory",  JSON.stringify(history));
+  localStorage.setItem("dcReviews",  JSON.stringify(reviews));
+}
+
+/* 12時間自動アーカイブ（起動時） */
+function archiveSession(){
+  const drinks = session.log.filter(e => !e.water);
+  const total = Math.round(drinks.reduce((s, e) => s + e.g, 0) * 10) / 10;
+  if (total > 0){
+    const key = localKey(new Date(session.start));
+    const ex = history.find(h => h.date === key);
+    if (ex){ ex.g = Math.round((ex.g + total) * 10) / 10; ex.cups += drinks.length; }
+    else history.push({ date: key, g: total, cups: drinks.length });
+  }
+  session = { start: null, log: [], quizzes: [] };
+  save();
+}
+if (session.start && Date.now() - session.start > 12 * 3600000) archiveSession();
+
+/* ============ コメント連続回避の状態（画面セッション内のみ） ============ */
+const prevMsg = { limit70: null, limitOver: null, water: null, band: null };
+let bandState = { at: 0, type: null, msg: null };
+let safetyOn = false;
+
+/* ============ 記録 ============ */
+function lastCogIndex(){ const q = session.quizzes[session.quizzes.length - 1]; return q ? q.indexPct : null; }
+function lastIq(){ for (let i = session.quizzes.length - 1; i >= 0; i--){ if (session.quizzes[i].iq != null) return session.quizzes[i].iq; } return null; }
+
+function addDrink(i){
+  const d = DRINKS[i];
+  const before = soberEta(session, settings, Date.now());
+  if (!session.start) session.start = Date.now();
+  session.log.push({ t: Date.now(), name: d.name, emoji: d.emoji, g: pureAlcoholG(d.ml, d.abv), water: false });
+  save();
+  const after = soberEta(session, settings, Date.now());
+  if (before && after && after > before) showEtaDelta(Math.round((after - before) / 60000));
+  if (navigator.vibrate) navigator.vibrate(25);
+  render();
+}
+function addWater(){
+  if (!session.start) session.start = Date.now();
+  session.log.push({ t: Date.now(), name: "水", emoji: "💧", g: 0, water: true });
+  save(); render();
+  prevMsg.water = contextComment("water", prevMsg.water);
+  toast(prevMsg.water, "assets/mascot-water.webp", "💧");
+}
+function undoLast(){
+  session.log.pop();
+  if (session.log.length === 0) session.start = null;
+  save(); render();
+}
+function showEtaDelta(min){
+  const el = $("etaDelta");
+  el.textContent = "+" + min + "分";
+  el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 2200);
+}
+function toast(msg, imgSrc, emoji){
+  const t = $("toast");
+  t.innerHTML = (imgSrc ? `<img src="${imgSrc}" alt="" onerror="fb(this,'${emoji}')">` : "") + `<span>${msg}</span>`;
+  t.classList.add("show");
+  clearTimeout(t._tm);
+  t._tm = setTimeout(() => t.classList.remove("show"), 3000);
+}
+
+/* ============ 描画 ============ */
+function render(){
+  const now = Date.now();
+  const drinks = session.log.filter(e => !e.water);
+  const total = Math.round(session.log.reduce((s, e) => s + e.g, 0) * 10) / 10;
+  $("totalG").textContent = total;
+  $("cups").textContent = drinks.length + "杯";
+  if (session.start){
+    const m = Math.floor((now - session.start) / 60000);
+    $("elapsed").textContent = Math.floor(m / 60) + ":" + pad2(m % 60);
+  } else $("elapsed").textContent = "--:--";
+
+  // 上限バー＋バナー（tierが変わった時だけコメント再抽選）
+  const pct = settings.limit ? Math.min(100, total / settings.limit * 100) : 0;
+  const bar = $("limitBar");
+  bar.style.width = pct + "%";
+  bar.style.background = pct >= 100 ? "var(--red)" : pct >= 70 ? "var(--amber)" : "var(--green)";
+  $("limitLbl").textContent = "上限 " + settings.limit + "g";
+  const lb = $("limitBanner");
+  const tier = total >= settings.limit ? "limitOver" : total >= settings.limit * 0.7 ? "limit70" : null;
+  if (tier !== lb.dataset.tier){
+    lb.dataset.tier = tier || "";
+    if (tier){
+      prevMsg[tier] = contextComment(tier, prevMsg[tier]);
+      lb.className = "banner show " + (tier === "limitOver" ? "stop" : "warn");
+      lb.innerHTML = (tier === "limit70" ? `<img src="assets/mascot-worried.webp" alt="" onerror="fb(this,'⚠️')">` : "🛑 ")
+        + `<span>${prevMsg[tier]}</span>`;
+    } else lb.className = "banner";
+  }
+
+  // ペース警告
+  const hourG = session.log.filter(e => now - e.t < 3600000).reduce((s, e) => s + e.g, 0);
+  const lastWater = session.log.filter(e => e.water).pop();
+  const pb = $("paceBanner");
+  if (hourG > settings.pace && !(lastWater && now - lastWater.t < 30 * 60000)){
+    pb.className = "banner pace show";
+    pb.textContent = "💧 ペース速め（直近1時間 " + Math.round(hourG) + "g）。水をはさもう";
+  } else pb.className = "banner pace";
+
+  // 時間帯バナー（0-5時 lateNight 優先、22時以降 lastTrain。1時間に1回更新）
+  const h = new Date().getHours();
+  const bandType = (h >= 0 && h < 5) ? "lateNight" : (h >= 22) ? "lastTrain" : null;
+  const bb = $("bandBanner");
+  if (bandType && session.start){
+    if (bandType !== bandState.type || now - bandState.at > 3600000){
+      bandState = { at: now, type: bandType, msg: contextComment(bandType, bandState.msg) };
+    }
+    bb.className = "banner band show"; bb.textContent = (bandType === "lastTrain" ? "🚃 " : "🌙 ") + bandState.msg;
+  } else { bb.className = "banner band"; bandState.type = null; }
+
+  // BAC・シラフ予測
+  const bac = bacAt(session, settings, now);
+  const st = stageOf(bac);
+  $("stageName").textContent = st.name;
+  $("stageEmoji").textContent = st.emoji;
+  $("stageBac").textContent = "推定BAC " + bac.toFixed(3) + "%";
+  const eta = soberEta(session, settings, now);
+  if (eta){
+    const d = new Date(eta);
+    $("etaTime").textContent = (d.getDate() !== new Date(now).getDate() ? "翌 " : "") + hm(eta);
+    $("etaSub").textContent = "シラフ予測（あと" + ((eta - now) / 3600000).toFixed(1) + "時間）";
+  } else { $("etaTime").textContent = "—"; $("etaSub").textContent = "シラフ予測（飲むと後ろにずれます）"; }
+  drawGraph(now, eta);
+
+  // 飲みIQチップ・チェック促し
+  const iq = lastIq();
+  $("iqChip").style.display = iq != null ? "inline-block" : "none";
+  if (iq != null) $("iqChip").textContent = "🧠 最新の飲みIQ " + iq;
+  const lastQ = session.quizzes.length ? session.quizzes[session.quizzes.length - 1].t : session.start;
+  $("quizNudge").style.display =
+    (session.start && drinks.length > 0 && now - lastQ > 45 * 60000 && !quiz.active) ? "inline-block" : "none";
+
+  // ログ
+  const ul = $("logList");
+  if (session.log.length === 0){
+    ul.innerHTML = `<li class="empty" style="border:none"><img src="assets/mascot-happy.webp" alt="" onerror="fb(this,'🍻')"><span>まだ記録がありません。<br>今夜も賢く楽しく！</span></li>`;
+  } else {
+    ul.innerHTML = [...session.log].reverse().map(e =>
+      `<li><span>${e.emoji} ${e.name}${e.water ? "" : ` <span class="num" style="color:var(--amber)">${e.g}g</span>`}</span><span class="num">${hm(e.t)}</span></li>`).join("");
+  }
+  renderHistory();
+  renderSettingsInfo();
+}
+
+function drawGraph(now, eta){
+  const cv = $("bacCanvas");
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = 150;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext("2d");
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  if (!session.start){ ctx.fillStyle = "#93a0b4"; ctx.font = "12px sans-serif"; ctx.fillText("記録するとBAC推移が表示されます", 12, 80); return; }
+  const series = bacSeries(session, settings, now, 5);
+  if (series.length < 2) return;
+  const t0 = series[0].t, t1 = series[series.length - 1].t;
+  const peak = Math.max(0.08, ...series.map(p => p.bac)) * 1.15;
+  const X = t => 8 + (t - t0) / (t1 - t0) * (W - 16);
+  const Y = b => H - 18 - (b / peak) * (H - 30);
+  // 酔い段階の帯
+  const bands = [[0, 0.02, "#3ecf8e"], [0.02, 0.05, "#9acD5a"], [0.05, 0.11, "#f5a623"], [0.11, 0.16, "#f57e23"], [0.16, peak, "#ff5c5c"]];
+  for (const [a, b, c] of bands){
+    if (a >= peak) continue;
+    ctx.fillStyle = c + "16";
+    ctx.fillRect(8, Y(Math.min(b, peak)), W - 16, Y(a) - Y(Math.min(b, peak)));
+  }
+  // 実績（実線）と予測（点線）
+  const seg = (pts, dash, color) => {
+    if (pts.length < 2) return;
+    ctx.setLineDash(dash); ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(X(pts[0].t), Y(pts[0].bac));
+    for (const p of pts) ctx.lineTo(X(p.t), Y(p.bac));
+    ctx.stroke(); ctx.setLineDash([]);
+  };
+  const actual = series.filter(p => !p.predicted);
+  const pred = series.filter((p, i) => p.predicted || i === actual.length - 1);
+  seg(actual, [], "#f5a623");
+  seg(pred, [5, 4], "#5ca8ff");
+  // 今マーカー
+  ctx.strokeStyle = "rgba(238,240,245,.45)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(X(now), 6); ctx.lineTo(X(now), H - 16); ctx.stroke();
+  const nowB = bacAt(session, settings, now);
+  ctx.fillStyle = "#f5e9d0"; ctx.beginPath(); ctx.arc(X(now), Y(nowB), 4, 0, 7); ctx.fill();
+  // 軸ラベル
+  ctx.fillStyle = "#93a0b4"; ctx.font = "10px sans-serif";
+  ctx.fillText(hm(t0), 8, H - 4);
+  ctx.fillText("今", Math.min(X(now), W - 30), H - 4);
+  if (eta) ctx.fillText("シラフ " + hm(eta), W - 78, H - 4);
+}
+
+/* ============ 認知テスト ============ */
+const TIER_JP = { genius: "冴えすぎ", sharp: "切れ味キープ", okay: "まだ大丈夫そう", slipping: "少し低下", drunk: "だいぶ酔い", closed: "店じまい" };
+let quiz = { active: false, baseline: false, idx: 0, level: 2, results: [], q: null, t0: 0, timer: null, input: "" };
+
+function startQuiz(isBaseline){
+  if (quiz.active) return;
+  quiz = { active: true, baseline: isBaseline, idx: 0, level: 2, results: [], q: null, t0: 0, timer: null, input: "" };
+  tab("chk");
+  $("quizIdle").style.display = "none";
+  $("quizResult").style.display = "none";
+  $("quizRun").style.display = "block";
+  nextQuestion();
+}
+function nextQuestion(){
+  quiz.q = makeQuestion(quiz.level);
+  quiz.input = "";
+  $("qNo").textContent = `問題 ${quiz.idx + 1}/6` + (quiz.baseline ? "（基準）" : "");
+  $("qLv").textContent = "レベル " + quiz.q.level;
+  $("qAns").innerHTML = "&nbsp;";
+  if (quiz.q.type === "reverse"){
+    $("qText").textContent = quiz.q.digits;
+    $("qSub").textContent = "数字を覚えて、逆から入力（2秒後に隠れます）";
+    padEnabled(false);
+    setTimeout(() => { if (quiz.active){ $("qText").textContent = "？？？？？".slice(0, quiz.q.digits.length); padEnabled(true); startTimer(); } }, 2000);
+  } else {
+    $("qText").textContent = quiz.q.text + " = ?";
+    $("qSub").textContent = "計算して入力";
+    padEnabled(true);
+    startTimer();
+  }
+}
+function padEnabled(on){ document.querySelectorAll("#quizRun .pad button, #quizRun .giveup").forEach(b => b.disabled = !on); }
+function startTimer(){
+  quiz.t0 = Date.now();
+  clearInterval(quiz.timer);
+  quiz.timer = setInterval(() => {
+    const left = Math.max(0, 20000 - (Date.now() - quiz.t0));
+    $("qTimerBar").style.width = (left / 200) + "%";
+    if (left <= 0) recordAnswer(null);
+  }, 100);
+}
+function key(n){ if (quiz.input.replace("-", "").length < 6){ quiz.input += n; showInput(); } }
+function keySign(){ quiz.input = quiz.input.startsWith("-") ? quiz.input.slice(1) : "-" + quiz.input; showInput(); }
+function keyDel(){ quiz.input = quiz.input.slice(0, -1); showInput(); }
+function showInput(){ $("qAns").textContent = quiz.input || " "; }
+function submitAns(){ if (quiz.input === "" || quiz.input === "-") return; recordAnswer(quiz.input); }
+function giveUp(){ recordAnswer(null); }
+function recordAnswer(val){
+  clearInterval(quiz.timer);
+  const ms = Math.min(20000, Date.now() - quiz.t0);
+  const correct = val != null && (quiz.q.type === "calc" ? Number(val) === quiz.q.answer : String(val) === String(quiz.q.answer));
+  quiz.results.push({ level: quiz.q.level, correct, ms });
+  quiz.level = nextLevel(quiz.level, correct);
+  quiz.idx++;
+  if (quiz.idx >= 6) finishQuiz(); else nextQuestion();
+}
+function finishQuiz(){
+  const sc = scoreQuiz(quiz.results, 2);
+  const wasBaseline = quiz.baseline;
+  quiz.active = false;
+  $("quizRun").style.display = "none";
+  const box = $("quizResult");
+  box.style.display = "block";
+
+  if (wasBaseline){
+    settings.baselinePct = Math.max(1, sc.pct);
+    save();
+    box.innerHTML = `<div class="iqbig"><div class="l">シラフ基準を保存しました</div>
+      <div class="n num" style="font-size:44px">${sc.pct}%</div>
+      <div class="l">この成績が「飲みIQ 120」の基準になります</div></div>
+      <button class="bigbtn" onclick="quizIdleView()">OK</button>`;
+    return;
+  }
+
+  const ci = cognitiveIndex(sc.pct, settings.baselinePct);
+  const entry = { t: Date.now(), pct: sc.pct, indexPct: ci.pct, iq: null };
+  let inner = "";
+  if (settings.baselinePct){
+    const r = drinkIQ(sc.pct, settings.baselinePct, lastIq());
+    entry.iq = r.iq;
+    const danger = ci.pct < 50;
+    inner += `<div class="iqbig"><div class="l">🧠 飲みIQ（シラフのあなた＝120）</div>
+      <div class="n num">${r.iq}</div><div class="tier">${TIER_JP[r.tier]}</div></div>`;
+    if (!danger) inner += `<div class="iqcomment">${r.comment}</div>`;
+    inner += `<div class="trend num">認知機能インデックス ${ci.pct}%（シラフ比）</div>`;
+    if (danger){
+      inner += `<div class="cogwarn red">${SAFETY_NOTICE}</div>`;
+    } else if (ci.pct < 80){
+      inner += `<div class="cogwarn red">⚠️ 判断力が落ちています。ここで締めるのが正解</div>`;
+    }
+    if (danger) setTimeout(openSafety, 400);
+  } else {
+    inner += `<div class="iqbig"><div class="l">今回の成績（絶対値）</div>
+      <div class="n num" style="font-size:44px">${sc.pct}%</div></div>
+      <div class="iqcomment">シラフの時に基準を測ると「飲みIQ」が使えます（設定タブから）</div>`;
+  }
+  session.quizzes.push(entry);
+  save();
+  const seq = session.quizzes.filter(q => q.iq != null).map(q => q.iq);
+  if (seq.length >= 2) inner += `<div class="trend num">今夜の推移: ${seq.join(" → ")}</div>`;
+  inner += `<button class="bigbtn" onclick="quizIdleView()">閉じる</button>`;
+  box.innerHTML = inner;
+  render();
+}
+function quizIdleView(){
+  $("quizResult").style.display = "none";
+  $("quizRun").style.display = "none";
+  $("quizIdle").style.display = "block";
+  const b = $("baselineStatus");
+  b.innerHTML = settings.baselinePct
+    ? `基準測定済み: <b class="num">${settings.baselinePct}%</b>（飲みIQが使えます）`
+    : `⚠️ 基準未測定です。<b>シラフの時</b>に設定タブから基準テストを実施すると「飲みIQ」が使えます。`;
+  const seq = session.quizzes.filter(q => q.iq != null).map(q => q.iq);
+  $("quizTrend").textContent = seq.length ? "今夜の飲みIQ推移: " + seq.join(" → ") : "";
+}
+
+/* ============ 成績表 ============ */
+let scSaved = false;
+function openScorecard(){
+  const drinks = session.log.filter(e => !e.water);
+  if (drinks.length === 0){
+    if (session.log.length && confirm("記録をリセットしますか？")){ session = { start: null, log: [], quizzes: [] }; save(); render(); }
+    return;
+  }
+  scSaved = false;
+  const card = scorecard(session, settings, lastCogIndex());
+  const title = pickTitle({ card, session, endTime: Date.now(), cogIndexPct: lastCogIndex() });
+  const provisional = [...history];
+  const key = localKey(new Date(session.start));
+  const ex = provisional.find(h => h.date === key);
+  const merged = ex ? { ...ex, g: ex.g + card.totalG } : { date: key, g: card.totalG };
+  const stk = streak([...provisional.filter(h => h.date !== key), merged], settings.limit);
+  const mascot = ["S", "A"].includes(card.grade) ? ["assets/mascot-cheers.webp", "🎉"]
+    : card.grade === "B" ? ["assets/mascot-happy.webp", "🙂"] : ["assets/mascot-worried.webp", "🐻"];
+  $("scSheet").innerHTML = `
+    <img class="mascot-c" src="${mascot[0]}" alt="" onerror="fb(this,'${mascot[1]}')">
+    <div class="cardtitle">今夜の成績表</div>
+    <div class="gradebig">${card.grade}</div>
+    <div class="trend num">${card.points}点 / 合計 ${card.totalG}g</div>
+    <ul class="badges">${card.badges.map(b =>
+      `<li><span>${b.label}</span>${b.skipped ? '<span class="bskip">未測定</span>' : b.ok ? '<span class="bok">◯</span>' : '<span class="bng">✕</span>'}</li>`).join("")}</ul>
+    <div class="titlebox">👑 称号「${title}」</div>
+    ${stk > 0 ? `<div class="streak">🔥 上限内 ${stk}日連続</div>` : ""}
+    <button class="bigbtn" id="scSave">保存して閉じる</button>
+    <button class="bigbtn ghost" onclick="closeScorecard()">まだ飲み会に戻る</button>`;
+  $("scOverlay").classList.add("show");
+  $("scSave").onclick = () => {
+    if (scSaved) return;
+    scSaved = true;
+    const ex2 = history.find(h => h.date === key);
+    if (ex2){ ex2.g = Math.round((ex2.g + card.totalG) * 10) / 10; ex2.cups = (ex2.cups || 0) + drinks.length; ex2.grade = card.grade; ex2.points = card.points; }
+    else history.push({ date: key, g: card.totalG, cups: drinks.length, grade: card.grade, points: card.points });
+    session = { start: null, log: [], quizzes: [] };
+    save();
+    closeScorecard();
+    render();
+  };
+}
+function closeScorecard(){ $("scOverlay").classList.remove("show"); }
+
+/* ============ 履歴・振り返り ============ */
+const dayAtNoon = offset => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - offset); return d; };
+function renderHistory(){
+  const days = [];
+  for (let i = 13; i >= 0; i--){
+    const d = dayAtNoon(i);
+    const key = localKey(d);
+    const hEntry = history.find(x => x.date === key);
+    days.push({ key, label: (d.getMonth() + 1) + "/" + d.getDate(), g: hEntry ? hEntry.g : 0, grade: hEntry ? hEntry.grade : null });
+  }
+  const max = Math.max(40, ...days.map(d => d.g));
+  const gradeColor = g => g === "S" || g === "A" ? "var(--green)" : g === "B" ? "var(--amber)" : "var(--red)";
+  $("histBars").innerHTML = days.map(d => {
+    const c = d.g === 0 ? "var(--card2)" : d.g <= 20 ? "var(--green)" : d.g <= 40 ? "var(--amber)" : "var(--red)";
+    return `<div class="hist-day"><span class="d num">${d.label}</span>
+      <div class="hb"><div style="width:${d.g / max * 100}%;background:${c}"></div></div>
+      <span class="n2 num">${d.g ? d.g + "g" : "休"}${d.grade ? `<span class="gr" style="background:${gradeColor(d.grade)}22;color:${gradeColor(d.grade)}">${d.grade}</span>` : ""}</span></div>`;
+  }).join("");
+  const last7 = days.slice(7);
+  const wt = Math.round(last7.reduce((s, d) => s + d.g, 0) * 10) / 10;
+  const dry = last7.filter(d => d.g === 0).length;
+  const drinkDays = last7.filter(d => d.g > 0);
+  $("week7").textContent = wt + "g";
+  $("dryDays").textContent = dry + "日";
+  $("avgDay").textContent = (drinkDays.length ? Math.round(wt / drinkDays.length) : 0) + "g";
+  renderReviewCard();
+  renderAnalysis();
+}
+
+let rev = { hangover: 0, regret: 0, symptoms: [], meds: [] };
+function renderReviewCard(){
+  const card = $("reviewCard");
+  const target = [...history].sort((a, b) => b.date.localeCompare(a.date))
+    .find(h => !reviews.some(r => r.date === h.date));
+  if (!target){ card.style.display = "none"; return; }
+  if (card.dataset.date === target.date) return; // 入力中の再描画で消さない
+  card.dataset.date = target.date;
+  card.style.display = "block";
+  rev = { hangover: 0, regret: 0, symptoms: [], meds: [] };
+  card.innerHTML = `
+    <h2>☀️ 振り返り入力 — ${target.date}（${target.g}g）</h2>
+    <div class="slider-row"><label>二日酔い度</label><input type="range" min="0" max="10" value="0" id="rvH"><span class="val num" id="rvHv">0</span></div>
+    <div class="slider-row"><label>後悔度</label><input type="range" min="0" max="10" value="0" id="rvR"><span class="val num" id="rvRv">0</span></div>
+    <div style="font-size:12.5px;color:var(--sub);margin-top:6px">症状（複数選択）</div>
+    <div class="chips" id="rvSym">${SYMPTOMS.map(s => `<button onclick="tgl(this,'symptoms','${s}')">${s}</button>`).join("")}</div>
+    <div style="font-size:12.5px;color:var(--sub)">服薬・対処（複数選択・記録用）</div>
+    <div class="chips" id="rvMed">${MEDS.map(s => `<button onclick="tgl(this,'meds','${s}')">${s}</button>`).join("")}</div>
+    <input type="text" id="rvMedFree" placeholder="その他の対処（自由入力）" style="margin:4px 0 8px">
+    <textarea id="rvMemo" rows="2" placeholder="ひとことメモ"></textarea>
+    <button class="bigbtn" onclick="saveReview('${target.date}',${target.g})">保存する</button>`;
+  $("rvH").oninput = e => { rev.hangover = +e.target.value; $("rvHv").textContent = e.target.value; };
+  $("rvR").oninput = e => { rev.regret = +e.target.value; $("rvRv").textContent = e.target.value; };
+}
+function tgl(btn, field, val){
+  btn.classList.toggle("sel");
+  const arr = rev[field];
+  const i = arr.indexOf(val);
+  i >= 0 ? arr.splice(i, 1) : arr.push(val);
+}
+function saveReview(date, g){
+  const free = $("rvMedFree").value.trim();
+  reviews.push({ date, g, hangover: rev.hangover, regret: rev.regret,
+    symptoms: [...rev.symptoms], meds: free ? [...rev.meds, free] : [...rev.meds],
+    memo: $("rvMemo").value.trim() });
+  save();
+  $("reviewCard").dataset.date = "";
+  renderHistory();
+  toast("振り返りを保存しました。えらい！", "assets/mascot-happy.webp", "🙂");
+}
+
+function renderAnalysis(){
+  const el = $("symptomStats");
+  if (reviews.length >= 3){
+    const withS = reviews.filter(r => r.symptoms && r.symptoms.length > 0);
+    const noS = reviews.filter(r => !r.symptoms || r.symptoms.length === 0);
+    const avg = a => a.length ? Math.round(a.reduce((s, r) => s + r.g, 0) / a.length * 10) / 10 : null;
+    const ref = reviews.length < 5 ? "<b>※参考値</b>（データ少なめ・5件から精度向上）" : "";
+    el.innerHTML = `症状が出た夜の平均 <b class="num">${avg(withS) ?? "—"}g（n=${withS.length}）</b> ／
+      出なかった夜 <b class="num">${avg(noS) ?? "—"}g（n=${noS.length}）</b><br>${ref}`;
+  } else {
+    el.textContent = "振り返りが3件たまると、症状と飲酒量の関係を表示します。";
+  }
+  const fl = estimateFailureLine(reviews);
+  $("failLine").innerHTML = fl
+    ? `<div class="failline">📉 あなたの失敗ライン推定: <span class="fv num">${fl}g</span><br>
+       <span style="font-size:12px;color:var(--sub)">このあたりから翌朝がつらくなりやすい傾向です</span><br>
+       <button class="bigbtn ghost" style="margin-top:8px" onclick="applyFail(${fl})">上限を ${fl}g に設定する</button></div>`
+    : `<div class="note">振り返り（後悔度・二日酔い度）が増えると、自分の限界ラインを推定します。</div>`;
+}
+function applyFail(g){
+  settings = sanitizeSettings({ ...settings, limit: g });
+  save(); bindSettings(); render();
+  toast("上限を " + settings.limit + "g に設定しました", null, "");
+}
+
+/* ============ 設定 ============ */
+function bindSettings(){
+  $("sWeight").value = settings.weight;
+  $("sSex").value = settings.sex;
+  $("sLimit").value = settings.limit;
+  $("sPace").value = settings.pace;
+}
+function renderSettingsInfo(){
+  $("baseNote").innerHTML = settings.baselinePct
+    ? `基準測定済み: <b class="num">${settings.baselinePct}%</b>。体調が大きく変わったら測り直しを。`
+    : "未測定。シラフの時に一度測っておくと、飲酒中に「飲みIQ」で比較できます。";
+}
+["sWeight", "sSex", "sLimit", "sPace"].forEach(id => {
+  document.addEventListener("change", e => {
+    if (e.target.id !== id) return;
+    settings = sanitizeSettings({ ...settings,
+      weight: +$("sWeight").value, sex: $("sSex").value,
+      limit: +$("sLimit").value, pace: +$("sPace").value });
+    save(); bindSettings(); render();
+  });
+});
+function exportData(){
+  const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), settings, history, reviews }, null, 2)],
+    { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "drink-counter-export-" + localKey(new Date()) + ".json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function clearAll(){
+  if (confirm("履歴と振り返りをすべて削除します。よろしいですか？（設定と今夜の記録は残ります）")){
+    history = []; reviews = []; save(); render();
+  }
+}
+
+/* ============ 安全モード ============ */
+function openSafety(){ safetyOn = true; $("safetyText").textContent = SAFETY_NOTICE; $("safety").classList.add("show"); }
+function closeSafety(){ safetyOn = false; $("safety").classList.remove("show"); }
+
+/* ============ タブ ============ */
+function tab(name){
+  ["rec", "chk", "his", "set"].forEach(n => {
+    $("p-" + (n === "rec" ? "rec" : n)).classList.toggle("on", n === name);
+    $("tb-" + n).classList.toggle("on", n === name);
+  });
+  if (name === "chk" && !quiz.active) quizIdleView();
+  render();
+}
+
+/* ============ 初期化 ============ */
+$("drinkGrid").innerHTML = DRINKS.map((d, i) =>
+  `<button class="drink" onclick="addDrink(${i})"><span class="emoji">${d.emoji}</span>${d.name}<span class="g num">${pureAlcoholG(d.ml, d.abv)}g</span></button>`).join("");
+bindSettings();
+quizIdleView();
+render();
+setInterval(render, 60000); // 1分ごと（仕様: rAF毎の再計算は禁止）
+document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
+</script>
+</body>
+</html>
