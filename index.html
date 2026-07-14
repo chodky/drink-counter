@@ -649,6 +649,10 @@ function render(){
 function drawSessionGraph(cv, sess, now, nowLabel){
   const dpr = window.devicePixelRatio || 1;
   const W = cv.clientWidth, H = 150;
+  if (!W){ // レイアウト前（非表示タブ等）は次フレームで一度だけ再試行
+    if (!cv._retry){ cv._retry = true; requestAnimationFrame(() => { cv._retry = false; drawSessionGraph(cv, sess, now, nowLabel); }); }
+    return;
+  }
   cv.width = W * dpr; cv.height = H * dpr;
   const ctx = cv.getContext("2d");
   ctx.scale(dpr, dpr);
@@ -1393,6 +1397,8 @@ quizIdleView();
 render();
 setInterval(render, 60000); // 1分ごと（仕様: rAF毎の再計算は禁止）
 document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
+let _rsTm = null;
+window.addEventListener("resize", () => { clearTimeout(_rsTm); _rsTm = setTimeout(render, 200); });
 </script>
 </body>
 </html>
