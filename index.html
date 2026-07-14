@@ -66,10 +66,35 @@
   /* ドリンクグリッド */
   .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:11px}
   .drink{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 4px 10px;color:var(--txt);
-         font-size:13.5px;font-weight:700;cursor:pointer;transition:transform .06s;min-height:44px}
+         font-size:13.5px;font-weight:700;cursor:pointer;transition:transform .06s;min-height:44px;position:relative}
   .drink:active{transform:scale(.93);background:var(--card2)}
   .drink .emoji{font-size:25px;display:block;margin-bottom:3px}
   .drink .g{display:block;font-size:11px;color:var(--amber);font-weight:600;margin-top:2px}
+  .drink img.di{width:36px;height:36px;display:block;margin:0 auto 3px;object-fit:contain}
+  .drink .fx{position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;border-radius:50%;
+             width:22px;height:22px;line-height:22px;font-size:13px;font-weight:800;display:none}
+  .drink.editing .fx{display:block}
+  .favhead{display:flex;justify-content:space-between;align-items:center;margin:2px 2px 8px}
+  .favhead .t{font-size:13px;color:var(--sub);font-weight:600}
+  .favhead button{border:none;background:none;color:var(--blue);font-size:12.5px;font-weight:700;cursor:pointer;padding:4px}
+  .mi{width:18px;height:18px;vertical-align:-4px;object-fit:contain}
+  .bi{width:20px;height:20px;vertical-align:-5px;margin-right:4px;object-fit:contain}
+  .si{width:36px;height:36px;object-fit:contain}
+
+  /* ドリンク選択シート */
+  .catgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-top:10px}
+  .catbtn{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px 6px;color:var(--txt);
+          font-size:14px;font-weight:700;cursor:pointer;text-align:center}
+  .catbtn img{width:42px;height:42px;display:block;margin:0 auto 5px;object-fit:contain}
+  .gtitle{font-size:12px;color:var(--sub);font-weight:600;margin:12px 2px 2px}
+  .dsinput{width:96px !important;padding:8px !important;text-align:right}
+  .dspreview{background:var(--card2);border-radius:12px;padding:11px 14px;margin-top:14px;display:flex;
+             justify-content:space-between;align-items:center}
+  .dspreview .gv{font-size:24px;font-weight:900;color:var(--amber)}
+  .dspreview .meta{font-size:11.5px;color:var(--sub);line-height:1.6}
+  .estbadge{display:inline-block;background:rgba(92,168,255,.15);color:var(--blue);border-radius:7px;
+            padding:1px 7px;font-size:10.5px;font-weight:700;margin-left:5px;vertical-align:2px}
+  .backlink{border:none;background:none;color:var(--sub);font-size:13px;cursor:pointer;padding:4px 0;margin-bottom:2px}
   .rowbtns{display:flex;gap:9px;margin-bottom:11px}
   .rowbtns button{flex:1;padding:13px 4px;border:none;border-radius:12px;font-size:13.5px;font-weight:700;cursor:pointer;min-height:44px}
   .water{background:rgba(92,168,255,.16);color:var(--blue)}
@@ -91,6 +116,8 @@
   .tabs button{flex:1;padding:11px 0 9px;background:none;border:none;color:var(--sub);font-size:11px;font-weight:700;cursor:pointer}
   .tabs button.on{color:var(--amber)}
   .tabs button .ti{display:block;font-size:20px;margin-bottom:1px}
+  .tabs button .ti img{width:23px;height:23px;object-fit:contain;opacity:.5;transition:opacity .2s}
+  .tabs button.on .ti img{opacity:1}
   .panel{display:none} .panel.on{display:block}
 
   /* クイズ */
@@ -119,6 +146,7 @@
   .bigbtn{width:100%;padding:14px;border:none;border-radius:13px;background:var(--amber);color:#221600;
           font-size:15px;font-weight:800;cursor:pointer;margin-top:11px;min-height:44px}
   .bigbtn.ghost{background:var(--card2);color:var(--txt)}
+  .bigbtn:disabled{opacity:.4}
 
   /* 履歴 */
   .statrow{display:flex;gap:9px;margin-bottom:11px}
@@ -247,18 +275,23 @@
     </div>
     <div class="chip" id="quizNudge" style="display:none" onclick="tab('chk')">🧠 そろそろチェックしてみる？</div>
     <div class="chip num" id="iqChip" style="display:none"></div>
-    <div class="chip" onclick="toggleBacInfo()">❓ BACって何？</div>
+    <div class="chip" onclick="toggleBacInfo()"><img class="mi" src="assets/icons/action-info.png" alt="" onerror="fb(this,'❓')"> BACって何？</div>
     <div id="bacInfo" class="note" style="display:none"></div>
   </div>
 
+  <div class="favhead">
+    <span class="t">いつもの（タップで即記録・*は推定値）</span>
+    <button id="favEditBtn" onclick="toggleFavEdit()">編集</button>
+  </div>
   <div class="grid" id="drinkGrid"></div>
+  <button class="bigbtn ghost" style="margin:0 0 11px" onclick="openDrinkPicker()"><img class="bi" src="assets/icons/action-add.png" alt="" onerror="fb(this,'➕')">ほかの飲み物</button>
 
   <div class="rowbtns">
-    <button class="water" onclick="addWater()">💧 水を飲んだ</button>
-    <button class="undo" onclick="undoLast()">↩︎ 取り消し</button>
-    <button class="end" onclick="openScorecard()">🏁 終了</button>
+    <button class="water" onclick="addWater()"><img class="bi" src="assets/icons/drink-water.png" alt="" onerror="fb(this,'💧')">水を飲んだ</button>
+    <button class="undo" onclick="undoLast()"><img class="bi" src="assets/icons/action-undo.png" alt="" onerror="fb(this,'↩︎')">取り消し</button>
+    <button class="end" onclick="openScorecard()"><img class="bi" src="assets/icons/action-finish.png" alt="" onerror="fb(this,'🏁')">終了</button>
   </div>
-  <button class="sos" onclick="openSafety()">🆘 気分が悪いとき（安全ガイドを表示）</button>
+  <button class="sos" onclick="openSafety()"><img class="bi" src="assets/icons/action-sos.png" alt="" onerror="fb(this,'🆘')">気分が悪いとき（安全ガイドを表示）</button>
 
   <div class="card log">
     <h2>今夜のログ</h2>
@@ -325,6 +358,7 @@
     <select id="sSex"><option value="m">男性</option><option value="f">女性</option></select></div>
   <div class="field"><label>今夜の上限 (純アルコールg)</label><input type="number" id="sLimit" min="10" max="150" step="5"></div>
   <div class="field"><label>ペース警告 (g/時)</label><input type="number" id="sPace" min="5" max="100" step="5"></div>
+  <div class="field"><label>おちょこ1杯の容量 (mL)</label><input type="number" id="sOchoko" min="10" max="100" step="5"></div>
 
   <div class="card">
     <h2>基準テスト（シラフの時に実施）</h2>
@@ -351,10 +385,10 @@
 
 <!-- タブバー -->
 <div class="tabs">
-  <button class="on" id="tb-rec" onclick="tab('rec')"><span class="ti">🍻</span>記録</button>
-  <button id="tb-chk" onclick="tab('chk')"><span class="ti">🧠</span>チェック</button>
-  <button id="tb-his" onclick="tab('his')"><span class="ti">📊</span>履歴</button>
-  <button id="tb-set" onclick="tab('set')"><span class="ti">⚙️</span>設定</button>
+  <button class="on" id="tb-rec" onclick="tab('rec')"><span class="ti"><img src="assets/icons/tab-record.png" alt="" onerror="fb(this,'🍻')"></span>記録</button>
+  <button id="tb-chk" onclick="tab('chk')"><span class="ti"><img src="assets/icons/tab-check.png" alt="" onerror="fb(this,'🧠')"></span>チェック</button>
+  <button id="tb-his" onclick="tab('his')"><span class="ti"><img src="assets/icons/tab-history.png" alt="" onerror="fb(this,'📊')"></span>履歴</button>
+  <button id="tb-set" onclick="tab('set')"><span class="ti"><img src="assets/icons/tab-settings.png" alt="" onerror="fb(this,'⚙️')"></span>設定</button>
 </div>
 
 <!-- 成績表モーダル -->
@@ -414,18 +448,27 @@ function safeGet(key, def){
   catch { return def; }
 }
 const emptySession = () => ({ start: null, log: [], quizzes: [], name: "", rounds: [] });
-let settings = sanitizeSettings(safeGet("dcSettings", null));
+/* sanitizeSettings（logic.js）はochoko等の拡張キーを落とすため、ここで補完する */
+function sanitizeAll(s){
+  const base = sanitizeSettings(s);
+  const n = Number(s && s.ochoko);
+  base.ochoko = Number.isFinite(n) ? Math.min(100, Math.max(10, n)) : 30;
+  return base;
+}
+let settings = sanitizeAll(safeGet("dcSettings", null));
 let session  = safeGet("dcSession", null) || emptySession();
 if (!Array.isArray(session.quizzes)) session.quizzes = [];
 if (!Array.isArray(session.rounds)) session.rounds = [];
 if (typeof session.name !== "string") session.name = "";
 let history  = safeGet("dcHistory", []);
 let reviews  = safeGet("dcReviews", []);
+let favorites = safeGet("dcFavorites", null);
 function save(){
   localStorage.setItem("dcSettings", JSON.stringify(settings));
   localStorage.setItem("dcSession",  JSON.stringify(session));
   localStorage.setItem("dcHistory",  JSON.stringify(history));
   localStorage.setItem("dcReviews",  JSON.stringify(reviews));
+  localStorage.setItem("dcFavorites", JSON.stringify(favorites));
 }
 
 /* セッション詳細（レポート用）を履歴エントリに保存・マージする */
@@ -467,11 +510,11 @@ let safetyOn = false;
 function lastCogIndex(){ const q = session.quizzes[session.quizzes.length - 1]; return q ? q.indexPct : null; }
 function lastIq(){ for (let i = session.quizzes.length - 1; i >= 0; i--){ if (session.quizzes[i].iq != null) return session.quizzes[i].iq; } return null; }
 
-function addDrink(i){
-  const d = DRINKS[i];
+function recordDrinkEntry(def){
   const before = soberEta(session, settings, Date.now());
   if (!session.start) session.start = Date.now();
-  session.log.push({ t: Date.now(), name: d.name, emoji: d.emoji, g: pureAlcoholG(d.ml, d.abv), water: false });
+  const g = drinkG(def);
+  session.log.push({ t: Date.now(), water: false, emoji: "🍺", ...def, name: def.displayName, g, alcoholG: g });
   save();
   const after = soberEta(session, settings, Date.now());
   if (before && after && after > before) showEtaDelta(Math.round((after - before) / 60000));
@@ -481,7 +524,7 @@ function addDrink(i){
 }
 function addWater(){
   if (!session.start) session.start = Date.now();
-  session.log.push({ t: Date.now(), name: "水", emoji: "💧", g: 0, water: true });
+  session.log.push({ t: Date.now(), name: "水", emoji: "💧", icon: "drink-water.png", g: 0, water: true });
   save(); render();
   prevMsg.water = contextComment("water", prevMsg.water);
   toast(prevMsg.water, "assets/mascot-water.webp", "💧");
@@ -575,7 +618,8 @@ function render(){
   const bac = bacAt(session, settings, now);
   const st = stageOf(bac);
   $("stageName").textContent = st.name;
-  $("stageEmoji").textContent = st.emoji;
+  $("stageEmoji").innerHTML = STAGE_ICON[st.name]
+    ? `<img class="si" src="${ICON(STAGE_ICON[st.name])}" alt="" onerror="fb(this,'${st.emoji}')">` : st.emoji;
   $("stageBac").textContent = "推定BAC " + bac.toFixed(3) + "%";
   const eta = soberEta(session, settings, now);
   if (eta){
@@ -599,8 +643,9 @@ function render(){
     ul.innerHTML = `<li class="empty" style="border:none"><img src="assets/mascot-happy.webp" alt="" onerror="fb(this,'🍻')"><span>まだ記録がありません。<br>今夜も賢く楽しく！</span></li>`;
   } else {
     ul.innerHTML = [...session.log].reverse().map(e =>
-      `<li${e.water ? "" : ` onclick="openMood(${e.t})"`}><span>${e.emoji} ${esc(e.name)}${e.water ? "" : ` <span class="num" style="color:var(--amber)">${e.g}g</span>`}${e.mood ? ` <span style="font-size:12px">${esc(e.mood)}</span>` : ""}${e.note ? `<div style="font-size:11px;color:var(--sub);font-weight:400;margin-top:2px">📝 ${esc(e.note)}</div>` : ""}</span><span class="num">${hm(e.t)}</span></li>`).join("");
+      `<li${e.water ? "" : ` onclick="openMood(${e.t})"`}><span>${logIcon(e)} ${esc(e.name)}${e.water ? "" : ` <span class="num" style="color:var(--amber)">${e.g}g${e.estimated ? "*" : ""}</span>`}${e.mood ? " " + moodHtml(e.mood) : ""}${e.note ? `<div style="font-size:11px;color:var(--sub);font-weight:400;margin-top:2px">📝 ${esc(e.note)}</div>` : ""}</span><span class="num">${hm(e.t)}</span></li>`).join("");
   }
+  renderFavorites();
   renderHistory();
   renderSettingsInfo();
 }
@@ -923,7 +968,7 @@ function renderAnalysis(){
     : "";
 }
 function applyFail(g){
-  settings = sanitizeSettings({ ...settings, limit: g });
+  settings = sanitizeAll({ ...settings, limit: g });
   save(); bindSettings(); render();
   toast("上限を " + settings.limit + "g に設定しました", null, "");
 }
@@ -931,6 +976,220 @@ function applyFail(g){
 /* ============ 汎用シート ============ */
 function openUx(html){ $("uxSheet").innerHTML = html; $("uxOverlay").classList.add("show"); }
 function closeUx(){ $("uxOverlay").classList.remove("show"); }
+
+/* ============ アイコン ============ */
+const ICON = f => "assets/icons/" + f;
+const STAGE_ICON = { "シラフ": "stage-0-sober.png", "爽快期": "stage-1-refresh.png", "ほろ酔い期": "stage-2-tipsy.png",
+  "酩酊初期": "stage-3-drunk1.png", "酩酊期": "stage-4-drunk2.png", "泥酔期": "stage-5-blackout.png", "昏睡リスク": "stage-6-danger.png" };
+/* ログ行などの小アイコン。新形式はicon、水の旧データはdrink-water、旧ドリンクは絵文字のまま */
+const logIcon = e => (e.icon || e.water)
+  ? `<img class="mi" src="${ICON(e.icon || "drink-water.png")}" alt="" onerror="fb(this,'${e.emoji || "🍺"}')">`
+  : (e.emoji || "🍺");
+
+/* ============ ドリンク選択 v2 ============ */
+const CAT_META = {
+  beer:     { label: "ビール",           icon: "drink-beer-jug.png" },
+  cocktail: { label: "サワー・カクテル", icon: "drink-sour.png" },
+  whisky:   { label: "ウイスキー",       icon: "drink-highball.png" },
+  shochu:   { label: "焼酎",             icon: "drink-shochu-rock.png" },
+  sake:     { label: "日本酒",           icon: "drink-sake.png" },
+  wine:     { label: "ワイン",           icon: "drink-wine.png" },
+};
+const DEFAULT_FAVS = [
+  { category: "beer", displayName: "生中", icon: "drink-beer-jug.png", volumeMl: 500, abv: 5, estimated: false },
+  { category: "beer", displayName: "缶ビール350", icon: "drink-can-beer.png", volumeMl: 350, abv: 5, estimated: false },
+  { category: "whisky", displayName: "ハイボール(普通)", icon: "drink-highball.png", volumeMl: 30, spiritMl: 30, abv: 43, style: "ハイボール", estimated: true },
+  { category: "cocktail", displayName: "レモンサワー(ふつう)", icon: "drink-sour.png", volumeMl: 250, abv: 5, estimated: true },
+  { category: "sake", displayName: "日本酒 1合", icon: "drink-sake.png", volumeMl: 180, abv: 15, estimated: false },
+  { category: "wine", displayName: "ワイン(標準)", icon: "drink-wine.png", volumeMl: 125, abv: 12, estimated: false },
+];
+if (!Array.isArray(favorites)) favorites = DEFAULT_FAVS.slice();
+/* 純アルコールg。蒸留酒は総容量でなく原酒量×度数で計算する */
+const drinkG = d => Math.round((d.spiritMl ?? d.volumeMl) * d.abv / 100 * 0.8 * 10) / 10;
+const OCHOKO = () => settings.ochoko || 30;
+
+let favEdit = false;
+function toggleFavEdit(){ favEdit = !favEdit; $("favEditBtn").textContent = favEdit ? "完了" : "編集"; renderFavorites(); }
+function renderFavorites(){
+  $("drinkGrid").innerHTML = favorites.map((f, i) =>
+    `<button class="drink${favEdit ? " editing" : ""}" onclick="favTap(${i})"><span class="fx">✕</span>
+       <img class="di" src="${ICON(f.icon)}" alt="" onerror="fb(this,'🍺')">${esc(f.displayName)}
+       <span class="g num">${drinkG(f)}g${f.estimated ? "*" : ""}</span></button>`).join("")
+    || `<div class="note" style="grid-column:1/4">「いつもの」が空です。下の「ほかの飲み物」から追加できます。</div>`;
+}
+function favTap(i){
+  if (favEdit){ favorites.splice(i, 1); save(); renderFavorites(); return; }
+  recordDrinkEntry({ ...favorites[i] });
+}
+function addFavorite(def){
+  if (favorites.some(f => f.displayName === def.displayName)){ toast("すでに「いつもの」にあります", null, ""); return; }
+  if (favorites.length >= 8){ toast("「いつもの」は8件まで。編集で減らしてから追加してね", null, ""); return; }
+  favorites.push(def); save(); renderFavorites();
+  toast(`「${def.displayName}」をいつものに追加しました⭐`, null, "");
+}
+
+function openDrinkPicker(){
+  openUx(`<div class="cardtitle">なにを飲む？</div>
+    <div class="catgrid">${Object.entries(CAT_META).map(([k, c]) =>
+      `<button class="catbtn" onclick="openCat('${k}')"><img src="${ICON(c.icon)}" alt="" onerror="fb(this,'🍺')">${c.label}</button>`).join("")}</div>`);
+}
+
+let ds = null;
+function openCat(k){
+  const defs = { beer: { sub: 0, size: 1, abv: 0 }, cocktail: { size: 0, strength: 1 },
+    whisky: { style: 2, amt: 1, abv: 0 }, shochu: { style: 0, abv: 1, amt: 1 },
+    sake: { amt: 4, abv: 0 }, wine: { amt: 1, abv: 0, color: 0 } };
+  ds = { cat: k, name: "", c: {}, ...defs[k] };
+  renderCat();
+}
+function catGroups(){
+  switch (ds.cat){
+    case "beer": {
+      const g = [{ key: "sub", title: "種類", opts: ["生ビール", "缶・瓶"] }];
+      g.push(ds.sub === 0
+        ? { key: "size", title: "サイズ", opts: ["小 250mL", "中 500mL", "大 700mL", "容量指定"], custom: 3, unit: "mL" }
+        : { key: "size", title: "サイズ", opts: ["缶 350mL", "缶 500mL", "小瓶 334mL", "中瓶 500mL", "大瓶 633mL"] });
+      g.push({ key: "abv", title: "度数", opts: ["5%（標準）", "度数指定"], custom: 1, unit: "%" });
+      return g;
+    }
+    case "cocktail": return [
+      { key: "size", title: "容器", opts: ["グラス 250mL", "ジョッキ 400mL", "缶 350mL", "容量指定"], custom: 3, unit: "mL" },
+      { key: "strength", title: "濃さ", opts: ["薄め 3%", "ふつう 5%", "濃いめ 7%", "超濃いめ 9%", "度数指定"], custom: 4, unit: "%" },
+    ];
+    case "whisky": {
+      const g = [{ key: "style", title: "飲み方", opts: ["ストレート", "ロック", "ハイボール", "水割り"] }];
+      g.push(ds.style <= 1
+        ? { key: "amt", title: "量", opts: ["シングル 30mL", "1.5ショット 45mL", "ダブル 60mL", "原酒量指定"], custom: 3, unit: "mL" }
+        : { key: "amt", title: "濃さ（原酒量）", opts: ["薄め 20mL", "普通 30mL", "濃いめ 45mL", "超濃いめ 60mL", "原酒量指定"], custom: 4, unit: "mL" });
+      g.push({ key: "abv", title: "度数", opts: ["43%（標準）", "度数指定"], custom: 1, unit: "%" });
+      return g;
+    }
+    case "shochu": return [
+      { key: "style", title: "飲み方", opts: ["ロック", "水割り", "お湯割り", "ソーダ割り", "ストレート"] },
+      { key: "abv", title: "度数", opts: ["20%", "25%", "度数指定"], custom: 2, unit: "%" },
+      { key: "amt", title: "原酒量", opts: ["薄め 45mL", "普通 60mL", "濃いめ 90mL", "原酒量指定"], custom: 3, unit: "mL" },
+    ];
+    case "sake": {
+      const o = OCHOKO();
+      return [
+        { key: "amt", title: "量", opts: [`おちょこ×1 ${o}mL`, `おちょこ×2 ${o * 2}mL`, `おちょこ×3 ${o * 3}mL`, "0.5合 90mL", "1合 180mL", "2合 360mL", "容量指定"], custom: 6, unit: "mL" },
+        { key: "abv", title: "度数", opts: ["15%（標準）", "度数指定"], custom: 1, unit: "%" },
+      ];
+    }
+    default: return [
+      { key: "amt", title: "量", opts: ["少なめ 100mL", "標準 125mL", "多め 150mL", "デカンタ小 250mL", "ボトル 750mL", "容量指定"], custom: 5, unit: "mL" },
+      { key: "abv", title: "度数", opts: ["12%（標準）", "度数指定"], custom: 1, unit: "%" },
+      { key: "color", title: "色（記録用）", opts: ["指定なし", "赤", "白", "ロゼ"] },
+    ];
+  }
+}
+function dsNum(k){ const v = parseFloat(ds.c[k]); return Number.isFinite(v) && v > 0 ? v : null; }
+/* 選択状態から保存用ドリンク定義を組み立てる。未入力の指定値があれば null */
+function dsResolve(){
+  const cat = ds.cat;
+  if (cat === "beer"){
+    const draft = ds.sub === 0;
+    const sizes = draft ? [250, 500, 700, null] : [350, 500, 334, 500, 633];
+    const names = draft ? ["生小", "生中", "生大", null] : ["缶ビール350", "缶ビール500", "小瓶ビール", "中瓶ビール", "大瓶ビール"];
+    let vol = sizes[ds.size], name = names[ds.size];
+    if (vol == null){ vol = dsNum("size"); if (!vol) return null; name = `生ビール ${vol}mL`; }
+    const abv = ds.abv === 0 ? 5 : dsNum("abv"); if (!abv) return null;
+    return { category: "beer", displayName: name, icon: draft ? "drink-beer-jug.png" : "drink-can-beer.png", volumeMl: vol, abv, estimated: false };
+  }
+  if (cat === "cocktail"){
+    const vols = [250, 400, 350, null];
+    let vol = vols[ds.size]; if (vol == null){ vol = dsNum("size"); if (!vol) return null; }
+    const strengths = [3, 5, 7, 9, null], snames = ["薄め", "ふつう", "濃いめ", "超濃いめ", "指定"];
+    let abv = strengths[ds.strength], estimated = true;
+    if (abv == null){ abv = dsNum("strength"); if (!abv) return null; estimated = false; }
+    const base = (ds.name || "").trim() || "サワー・カクテル";
+    return { category: "cocktail", displayName: `${base}(${snames[ds.strength]})`,
+             icon: abv >= 9 ? "drink-strong.png" : "drink-sour.png", volumeMl: vol, abv, estimated };
+  }
+  if (cat === "whisky"){
+    const style = ["ストレート", "ロック", "ハイボール", "水割り"][ds.style];
+    let spirit, aname, estimated;
+    if (ds.style <= 1){
+      spirit = [30, 45, 60, null][ds.amt]; aname = ["シングル", "1.5ショット", "ダブル", "指定"][ds.amt]; estimated = false;
+    } else {
+      spirit = [20, 30, 45, 60, null][ds.amt]; aname = ["薄め", "普通", "濃いめ", "超濃いめ", "指定"][ds.amt]; estimated = spirit != null;
+    }
+    if (spirit == null){ spirit = dsNum("amt"); if (!spirit) return null; }
+    const abv = ds.abv === 0 ? 43 : dsNum("abv"); if (!abv) return null;
+    const dname = ds.style === 2 ? `ハイボール(${aname})` : ds.style === 3 ? `ウイスキー水割り(${aname})` : `ウイスキー${style}(${aname})`;
+    return { category: "whisky", displayName: dname, icon: ds.style === 0 ? "drink-shot.png" : "drink-highball.png",
+             volumeMl: spirit, spiritMl: spirit, abv, style, estimated };
+  }
+  if (cat === "shochu"){
+    const style = ["ロック", "水割り", "お湯割り", "ソーダ割り", "ストレート"][ds.style];
+    let abv = [20, 25, null][ds.abv]; if (abv == null){ abv = dsNum("abv"); if (!abv) return null; }
+    let spirit = [45, 60, 90, null][ds.amt];
+    const estimated = spirit != null;
+    if (spirit == null){ spirit = dsNum("amt"); if (!spirit) return null; }
+    return { category: "shochu", displayName: `焼酎${style}(${["薄め", "普通", "濃いめ", "指定"][ds.amt]})`,
+             icon: "drink-shochu-rock.png", volumeMl: spirit, spiritMl: spirit, abv, style, estimated };
+  }
+  if (cat === "sake"){
+    const o = OCHOKO();
+    const amts = [o, o * 2, o * 3, 90, 180, 360, null];
+    const names = ["おちょこ1杯", "おちょこ2杯", "おちょこ3杯", "日本酒 0.5合", "日本酒 1合", "日本酒 2合", null];
+    let vol = amts[ds.amt], name = names[ds.amt];
+    if (vol == null){ vol = dsNum("amt"); if (!vol) return null; name = `日本酒 ${vol}mL`; }
+    const abv = ds.abv === 0 ? 15 : dsNum("abv"); if (!abv) return null;
+    return { category: "sake", displayName: name, icon: "drink-sake.png", volumeMl: vol, abv, estimated: false };
+  }
+  // wine
+  const amts = [100, 125, 150, 250, 750, null], anames = ["少なめ", "標準", "多め", "デカンタ小", "ボトル", "指定"];
+  let vol = amts[ds.amt]; if (vol == null){ vol = dsNum("amt"); if (!vol) return null; }
+  const abv = ds.abv === 0 ? 12 : dsNum("abv"); if (!abv) return null;
+  const color = ["", "赤", "白", "ロゼ"][ds.color];
+  const def = { category: "wine", displayName: `${color}ワイン(${anames[ds.amt]})`, icon: "drink-wine.png", volumeMl: vol, abv, estimated: false };
+  if (color) def.color = color;
+  return def;
+}
+function renderCat(){
+  const meta = CAT_META[ds.cat];
+  const chipRow = g => `<div class="gtitle">${g.title}</div><div class="chips">` +
+    g.opts.map((o, i) => `<button class="${ds[g.key] === i ? "sel" : ""}" onclick="dsPick('${g.key}',${i})">${o}</button>`).join("") +
+    (g.custom != null && ds[g.key] === g.custom
+      ? `<input type="number" class="dsinput" inputmode="decimal" placeholder="${g.unit}" value="${ds.c[g.key] ?? ""}" oninput="dsC('${g.key}',this.value)">`
+      : "") + `</div>`;
+  const nameInput = ds.cat === "cocktail"
+    ? `<input type="text" id="dsName" placeholder="名前（例：レモンサワー）任意" value="${esc(ds.name)}" oninput="ds.name=this.value;dsPreview()" style="margin-top:8px">`
+    : "";
+  openUx(`
+    <button class="backlink" onclick="openDrinkPicker()">‹ カテゴリに戻る</button>
+    <div class="cardtitle"><img class="bi" src="${ICON(meta.icon)}" alt="" onerror="fb(this,'🍺')">${meta.label}</div>
+    ${nameInput}
+    ${catGroups().map(chipRow).join("")}
+    <div class="dspreview"><div class="meta" id="dsMeta"></div><div class="gv num" id="dsG"></div></div>
+    <button class="bigbtn" id="dsRec" onclick="dsRecord(false)">記録する</button>
+    <button class="bigbtn ghost" id="dsRecFav" onclick="dsRecord(true)">⭐ 記録して「いつもの」に追加</button>`);
+  dsPreview();
+}
+function dsPick(k, i){
+  ds[k] = i;
+  if (k === "sub") ds.size = 1;                       // 生⇔缶瓶でサイズ選択肢が変わる
+  if (k === "style" && ds.cat === "whisky") ds.amt = 1; // 飲み方で量の選択肢が変わる
+  renderCat();
+}
+function dsC(k, v){ ds.c[k] = v; dsPreview(); }
+function dsPreview(){
+  const def = dsResolve();
+  $("dsRec").disabled = !def; $("dsRecFav").disabled = !def;
+  if (!def){ $("dsMeta").textContent = "数値を入力してください"; $("dsG").textContent = "—"; return; }
+  $("dsMeta").innerHTML = `${esc(def.displayName)}${def.estimated ? '<span class="estbadge">推定</span>' : ""}<br>` +
+    (def.spiritMl != null ? `原酒 ${def.spiritMl}mL × ${def.abv}%` : `${def.volumeMl}mL × ${def.abv}%`);
+  $("dsG").textContent = drinkG(def) + "g";
+}
+function dsRecord(fav){
+  const def = dsResolve();
+  if (!def){ toast("数値を入力してね", null, ""); return; }
+  closeUx();
+  recordDrinkEntry(def);
+  toast(`${def.displayName} ${drinkG(def)}g${def.estimated ? "（推定）" : ""} を記録しました`, null, "");
+  if (fav) addFavorite(def);
+}
 
 /* ============ 乾杯・会情報 ============ */
 const ROUND_ORDER = ["一次会", "二次会", "三次会", "四次会", "五次会", "六次会"];
@@ -969,40 +1228,54 @@ function nextRound(){
 }
 
 /* ============ 感想（チップ＋任意メモ） ============ */
-const MOODS = ["😋 うまい！", "😌 まだ余裕", "🥴 回ってきた", "🫠 だいぶキテる"];
+const MOODS = [
+  { icon: "mood-yummy.png",  label: "うまい！" },
+  { icon: "mood-fine.png",   label: "まだ余裕" },
+  { icon: "mood-tipsy.png",  label: "回ってきた" },
+  { icon: "mood-wasted.png", label: "だいぶキテる" },
+];
+/* 旧データは「😋 うまい！」形式なので endsWith でも照合する */
+const moodOf = m => MOODS.find(x => m === x.label || (typeof m === "string" && m.endsWith(x.label)));
+const moodHtml = m => {
+  const f = moodOf(m);
+  return f ? `<img class="mi" src="${ICON(f.icon)}" alt="" onerror="fb(this,'😋')"><span style="font-size:12px"> ${f.label}</span>`
+           : `<span style="font-size:12px">${esc(m)}</span>`;
+};
 let moodTimer = null;
 function findLog(t){ return session.log.find(e => e.t === t); }
 function showMoodBar(t){
   const bar = $("moodBar");
-  bar.innerHTML = MOODS.map(m => `<button onclick="quickMood(${t},'${m}')">${m}</button>`).join("")
+  bar.innerHTML = MOODS.map((m, i) =>
+    `<button onclick="quickMood(${t},${i})"><img class="mi" src="${ICON(m.icon)}" alt="" onerror="fb(this,'😋')"> ${m.label}</button>`).join("")
     + `<button onclick="openMood(${t})">✏️ メモ</button>`;
   bar.classList.add("show");
   clearTimeout(moodTimer);
   moodTimer = setTimeout(hideMoodBar, 8000);
 }
 function hideMoodBar(){ $("moodBar").classList.remove("show"); }
-function quickMood(t, m){
+function quickMood(t, i){
   const e = findLog(t);
-  if (e){ e.mood = m; save(); render(); }
+  if (e){ e.mood = MOODS[i].label; save(); render(); }
   hideMoodBar();
-  toast(m + " を記録しました", null, "");
+  toast(MOODS[i].label + " を記録しました", null, "");
 }
 let mdSel = null;
 function openMood(t){
   const e = findLog(t);
   if (!e || e.water) return;
   hideMoodBar();
-  mdSel = e.mood || null;
+  mdSel = e.mood ? (moodOf(e.mood) || { label: e.mood }).label : null;
   openUx(`
-    <div class="cardtitle">${e.emoji} ${esc(e.name)}（${hm(e.t)}）の感想</div>
-    <div class="chips" id="mdChips" style="justify-content:center">${MOODS.map(m =>
-      `<button class="${m === mdSel ? "sel" : ""}" onclick="mdToggle(this,'${m}')">${m}</button>`).join("")}</div>
+    <div class="cardtitle">${logIcon(e)} ${esc(e.name)}（${hm(e.t)}）の感想</div>
+    <div class="chips" id="mdChips" style="justify-content:center">${MOODS.map((m, i) =>
+      `<button class="${m.label === mdSel ? "sel" : ""}" data-label="${m.label}" onclick="mdToggle(${i})"><img class="mi" src="${ICON(m.icon)}" alt="" onerror="fb(this,'😋')"> ${m.label}</button>`).join("")}</div>
     <textarea id="mdMemo" rows="2" placeholder="ひとことメモ（任意）">${esc(e.note || "")}</textarea>
     <button class="bigbtn" onclick="saveMood(${t})">保存</button>`);
 }
-function mdToggle(btn, m){
-  mdSel = mdSel === m ? null : m;
-  document.querySelectorAll("#mdChips button").forEach(b => b.classList.toggle("sel", b.textContent === mdSel));
+function mdToggle(i){
+  const label = MOODS[i].label;
+  mdSel = mdSel === label ? null : label;
+  document.querySelectorAll("#mdChips button").forEach(b => b.classList.toggle("sel", b.dataset.label === mdSel));
 }
 function saveMood(t){
   const e = findLog(t);
@@ -1026,7 +1299,7 @@ function openReport(key){
   const waters = dt.log.filter(e => e.water);
   const events = [
     ...(dt.rounds || []).map(r => ({ t: r.t, html: `🍻 <b>${esc(r.label)}スタート</b>${dt.name ? "（" + esc(dt.name) + "）" : ""}` })),
-    ...dt.log.map(e => ({ t: e.t, html: `${e.emoji} ${esc(e.name)}${e.water ? "" : ` <span class="num" style="color:var(--amber)">${e.g}g</span>`}${e.mood ? " " + esc(e.mood) : ""}${e.note ? `<div style="font-size:11px;color:var(--sub)">📝 ${esc(e.note)}</div>` : ""}` })),
+    ...dt.log.map(e => ({ t: e.t, html: `${logIcon(e)} ${esc(e.name)}${e.water ? "" : ` <span class="num" style="color:var(--amber)">${e.g}g${e.estimated ? "*" : ""}</span>`}${e.mood ? " " + moodHtml(e.mood) : ""}${e.note ? `<div style="font-size:11px;color:var(--sub)">📝 ${esc(e.note)}</div>` : ""}` })),
     ...(dt.quizzes || []).map(q => ({ t: q.t, html: `🧠 認知チェック ${q.iq != null ? `飲みIQ <b class="num">${q.iq}</b>` : `<b class="num">${q.pct}%</b>`}` })),
   ].sort((a, b) => a.t - b.t);
   openUx(`
@@ -1045,7 +1318,9 @@ function copyForAI(key){
   const data = {
     app: "飲酒カウンター v2", date: key, party: dt.name || null,
     rounds: (dt.rounds || []).map(r => ({ label: r.label, time: hm(r.t) })),
-    events: dt.log.map(e => ({ time: hm(e.t), item: e.name, alcohol_g: e.g || undefined, water: e.water || undefined, mood: e.mood, note: e.note })),
+    events: dt.log.map(e => ({ time: hm(e.t), item: e.name, alcohol_g: e.g || undefined, water: e.water || undefined,
+      category: e.category, volume_ml: e.volumeMl, abv_pct: e.abv, spirit_ml: e.spiritMl, style: e.style, estimated: e.estimated || undefined,
+      mood: e.mood, note: e.note })),
     cognitive_tests: (dt.quizzes || []).map(q => ({ time: hm(q.t), drink_iq: q.iq, index_pct: q.indexPct })),
     total_alcohol_g: h.g, drink_count: h.cups, grade: h.grade || null,
   };
@@ -1083,18 +1358,19 @@ function bindSettings(){
   $("sSex").value = settings.sex;
   $("sLimit").value = settings.limit;
   $("sPace").value = settings.pace;
+  $("sOchoko").value = settings.ochoko;
 }
 function renderSettingsInfo(){
   $("baseNote").innerHTML = settings.baselinePct
     ? `基準測定済み: <b class="num">${settings.baselinePct}%</b>。体調が大きく変わったら測り直しを。`
     : "未測定。シラフの時に一度測っておくと、飲酒中に「飲みIQ」で比較できます。";
 }
-["sWeight", "sSex", "sLimit", "sPace"].forEach(id => {
+["sWeight", "sSex", "sLimit", "sPace", "sOchoko"].forEach(id => {
   document.addEventListener("change", e => {
     if (e.target.id !== id) return;
-    settings = sanitizeSettings({ ...settings,
+    settings = sanitizeAll({ ...settings,
       weight: +$("sWeight").value, sex: $("sSex").value,
-      limit: +$("sLimit").value, pace: +$("sPace").value });
+      limit: +$("sLimit").value, pace: +$("sPace").value, ochoko: +$("sOchoko").value });
     save(); bindSettings(); render();
   });
 });
@@ -1128,8 +1404,6 @@ function tab(name){
 }
 
 /* ============ 初期化 ============ */
-$("drinkGrid").innerHTML = DRINKS.map((d, i) =>
-  `<button class="drink" onclick="addDrink(${i})"><span class="emoji">${d.emoji}</span>${d.name}<span class="g num">${pureAlcoholG(d.ml, d.abv)}g</span></button>`).join("");
 $("uxOverlay").addEventListener("click", e => { if (e.target === $("uxOverlay")) closeUx(); });
 bindSettings();
 quizIdleView();
