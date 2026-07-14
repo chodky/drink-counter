@@ -2,9 +2,17 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f1115">
-<title>飲酒カウンター v2 — 賢く飲んで、明日の自分にありがとう</title>
+<title>飲酒カウンター v2 — 今夜の飲みIQ、測ってみる？</title>
+<link rel="icon" type="image/png" sizes="512x512" href="assets/icon-512.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<script>
+  // iOS Safariはviewport指定だけではズームを止められないため、ジェスチャー自体を無効化
+  document.addEventListener("gesturestart", e => e.preventDefault());
+  document.addEventListener("gesturechange", e => e.preventDefault());
+  document.addEventListener("dblclick", e => e.preventDefault());
+</script>
 <style>
   :root{
     --bg:#0f1115; --card:#1a1e26; --card2:#232936; --line:#2e3646;
@@ -12,7 +20,7 @@
     --amber:#f5a623; --cream:#f5e9d0; --green:#3ecf8e; --red:#ff5c5c; --blue:#5ca8ff;
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html{font-size:16px}
+  html{font-size:16px;touch-action:pan-x pan-y}
   body{background:var(--bg);color:var(--txt);
        font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
        max-width:480px;margin:0 auto;padding:10px 14px 92px;user-select:none}
@@ -182,7 +190,7 @@
 <body>
 
 <h1><img src="assets/logo.webp" alt="" onerror="fb(this,'🍺')">飲酒カウンター <span style="color:var(--amber)">v2</span></h1>
-<div class="tagline">賢く飲んで、明日の自分にありがとう — 飲み方を見える化して、楽しくスマートに</div>
+<div class="tagline">今夜の飲みIQ、測ってみる？ — 飲み方を見える化して、楽しくスマートに</div>
 
 <!-- ================= 記録タブ ================= -->
 <div class="panel on" id="p-rec">
@@ -577,9 +585,9 @@ function nextQuestion(){
   $("qAns").innerHTML = "&nbsp;";
   if (quiz.q.type === "reverse"){
     $("qText").textContent = quiz.q.digits;
-    $("qSub").textContent = "数字を覚えて、逆から入力（2秒後に隠れます）";
+    $("qSub").innerHTML = '数字を覚えて、<b style="color:var(--amber)">逆から</b>入力（2秒後に隠れます）';
     padEnabled(false);
-    setTimeout(() => { if (quiz.active){ $("qText").textContent = "？？？？？".slice(0, quiz.q.digits.length); padEnabled(true); startTimer(); } }, 2000);
+    setTimeout(() => { if (quiz.active){ $("qText").textContent = "？？？？？".slice(0, quiz.q.digits.length); $("qSub").innerHTML = '<b style="color:var(--amber)">⚠️ 逆から入力！</b>（例：472 なら 274）'; padEnabled(true); startTimer(); } }, 2000);
   } else {
     $("qText").textContent = quiz.q.text + " = ?";
     $("qSub").textContent = "計算して入力";
