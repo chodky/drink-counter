@@ -270,12 +270,12 @@
       <div class="etadelta num" id="etaDelta"></div>
     </div>
     <div class="stagebox">
-      <div><div class="n" id="stageName">シラフ</div><div class="b num" id="stageBac">推定BAC 0.000%</div></div>
+      <div><div class="n" id="stageName">シラフ</div><div class="b num" id="stageBac">推定血中アルコール濃度 0.000%</div></div>
       <div style="font-size:28px" id="stageEmoji">😀</div>
     </div>
     <div class="chip" id="quizNudge" style="display:none" onclick="tab('chk')">🧠 そろそろチェックしてみる？</div>
     <div class="chip num" id="iqChip" style="display:none"></div>
-    <div class="chip" onclick="toggleBacInfo()"><img class="mi" src="assets/icons/action-info.png" alt="" onerror="fb(this,'❓')"> BACって何？</div>
+    <div class="chip" onclick="toggleBacInfo()"><img class="mi" src="assets/icons/action-info.png" alt="" onerror="fb(this,'❓')"> 血中アルコール濃度とは？</div>
     <div id="bacInfo" class="note" style="display:none"></div>
   </div>
 
@@ -352,7 +352,7 @@
 <!-- ================= 設定タブ ================= -->
 <div class="panel" id="p-set">
   <div class="field"><label>体重 (kg)</label><input type="number" id="sWeight" min="30" max="200" step="1"></div>
-  <div class="field"><label>性別（BAC推定用）</label>
+  <div class="field"><label>性別（血中濃度推定用）</label>
     <select id="sSex"><option value="m">男性</option><option value="f">女性</option></select></div>
   <div class="field"><label>今夜の上限 (純アルコールg)</label><input type="number" id="sLimit" min="10" max="150" step="5"></div>
   <div class="field"><label>ペース警告 (g/時)</label><input type="number" id="sPace" min="5" max="100" step="5"></div>
@@ -373,7 +373,7 @@
 
   <div class="note">
     ・純アルコール量(g) = 容量(ml) × 度数(%) ÷ 100 × 0.8<br>
-    ・BACとシラフ予測はWidmark式に基づく<b>粗い推定</b>です。体調・空腹・加齢・服薬などで実際の酔いは
+    ・血中アルコール濃度とシラフ予測はWidmark式に基づく<b>粗い推定</b>です。体調・空腹・加齢・服薬などで実際の酔いは
     これより強く出ることがあります。<br>
     ・飲みIQ・認知チェックは医学的な知能検査・認知機能検査ではなく、シラフの自分との比較による
     セルフモニタリングです。<br>
@@ -617,7 +617,7 @@ function render(){
   $("stageName").textContent = st.name;
   $("stageEmoji").innerHTML = STAGE_ICON[st.name]
     ? `<img class="si" src="${ICON(STAGE_ICON[st.name])}" alt="" onerror="fb(this,'${st.emoji}')">` : st.emoji;
-  $("stageBac").textContent = "推定BAC " + bac.toFixed(3) + "%";
+  $("stageBac").textContent = `推定血中アルコール濃度 ${bac.toFixed(3)}%（${Math.round(bac * 1000)}mg/dL）`;
   const eta = soberEta(session, settings, now);
   if (eta){
     const d = new Date(eta);
@@ -657,7 +657,7 @@ function drawSessionGraph(cv, sess, now, nowLabel){
   const ctx = cv.getContext("2d");
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
-  if (!sess.start){ ctx.fillStyle = "#93a0b4"; ctx.font = "12px sans-serif"; ctx.fillText("記録するとBAC推移が表示されます", 12, 80); return; }
+  if (!sess.start){ ctx.fillStyle = "#93a0b4"; ctx.font = "12px sans-serif"; ctx.fillText("記録すると血中アルコール濃度の推移が表示されます", 12, 80); return; }
   const eta = soberEta(sess, settings, now);
   const series = bacSeries(sess, settings, now, 5);
   if (series.length < 2) return;
@@ -1316,8 +1316,8 @@ function toggleBacInfo(){
   const show = el.style.display === "none";
   el.style.display = show ? "block" : "none";
   if (show && !el.innerHTML){
-    el.innerHTML = `<b>BAC = 血中アルコール濃度（%）</b>。飲んだ純アルコール量と体重・性別から推定し（Widmark式）、
-      時間とともに分解されて下がります。グラフの色帯は下の目安に対応しています。
+    el.innerHTML = `<b>血中アルコール濃度（BAC）</b>＝血液中に含まれるアルコールの割合。飲んだ純アルコール量と体重・性別から推定し（Widmark式）、
+      時間とともに分解されて下がります。表示は%（w/v）で、mg/dL換算は×1000（例: 0.05% = 50mg/dL）。グラフの色帯は下の目安に対応しています。
       <table class="bactable">
         <tr><td>🙂 0.02〜0.05%</td><td>爽快期</td><td>気分さわやか・陽気に</td></tr>
         <tr><td>😊 0.05〜0.11%</td><td>ほろ酔い期</td><td>ほろ酔い・体温上昇</td></tr>
