@@ -185,6 +185,30 @@
   .toast.show{opacity:1}
   .toast img{width:30px;height:30px}
   .emoji-fb{font-size:26px}
+
+  /* 乾杯・会情報 */
+  .partyrow{display:flex;justify-content:space-between;align-items:center;background:var(--card2);border-radius:12px;
+            padding:8px 12px;margin-bottom:10px;font-size:13px;font-weight:700;gap:8px}
+  .partyrow button{border:none;border-radius:9px;background:rgba(245,166,35,.16);color:var(--amber);
+                   font-weight:700;font-size:12px;padding:7px 10px;cursor:pointer;flex:none}
+
+  /* 感想クイック入力バー */
+  .moodbar{position:fixed;left:50%;transform:translateX(-50%) translateY(16px);bottom:150px;background:var(--card);
+           border:1px solid var(--line);border-radius:16px;padding:9px 10px;z-index:140;display:flex;gap:7px;
+           opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;max-width:94%;overflow-x:auto}
+  .moodbar.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+  .moodbar button{border:none;border-radius:11px;background:var(--card2);color:var(--txt);font-size:12.5px;
+                  font-weight:700;padding:9px 10px;cursor:pointer;white-space:nowrap}
+  .log li{cursor:pointer}
+
+  /* BAC解説・レポート */
+  .bactable{width:100%;border-collapse:collapse;margin-top:6px}
+  .bactable td{padding:3px 4px;border-bottom:1px solid var(--card2);font-size:11.5px;line-height:1.5}
+  .tl{list-style:none;margin:10px 0}
+  .tl li{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--card2);font-size:13px;align-items:baseline}
+  .tl .tt{color:var(--sub);width:42px;flex:none;font-size:11.5px}
+  .rpbtn{border:none;background:var(--card2);color:var(--txt);border-radius:6px;font-size:11px;padding:3px 6px;margin-left:4px;cursor:pointer}
+  .revitem{font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--card2);color:var(--sub);line-height:1.6}
 </style>
 </head>
 <body>
@@ -194,7 +218,12 @@
 
 <!-- ================= 記録タブ ================= -->
 <div class="panel on" id="p-rec">
+  <div class="card" id="kanpaiCard" style="display:none">
+    <button class="bigbtn" style="margin-top:0" onclick="openKanpai()">🍻 乾杯！（飲み会スタート）</button>
+    <div class="note" style="text-align:center;margin-top:6px">会の名前や一次会/二次会も記録できます（任意）。ドリンクを直接タップしてもOK</div>
+  </div>
   <div class="card">
+    <div class="partyrow" id="partyRow" style="display:none"></div>
     <div class="bigrow">
       <div class="metric"><div class="v num" id="totalG">0</div><div class="u">純アルコール g</div></div>
       <div class="metric small"><div class="v num" id="cups">0杯</div><div class="u">ドリンク数</div></div>
@@ -218,6 +247,8 @@
     </div>
     <div class="chip" id="quizNudge" style="display:none" onclick="tab('chk')">🧠 そろそろチェックしてみる？</div>
     <div class="chip num" id="iqChip" style="display:none"></div>
+    <div class="chip" onclick="toggleBacInfo()">❓ BACって何？</div>
+    <div id="bacInfo" class="note" style="display:none"></div>
   </div>
 
   <div class="grid" id="drinkGrid"></div>
@@ -283,6 +314,7 @@
     <h2>分析・失敗ライン</h2>
     <div id="symptomStats" class="note">振り返りが3件たまると、症状と飲酒量の関係を表示します。</div>
     <div id="failLine"></div>
+    <div id="revList"></div>
   </div>
 </div>
 
@@ -328,6 +360,12 @@
 <!-- 成績表モーダル -->
 <div class="overlay" id="scOverlay"><div class="sheet" id="scSheet"></div></div>
 
+<!-- 汎用シート（乾杯・感想・レポート） -->
+<div class="overlay" id="uxOverlay"><div class="sheet" id="uxSheet"></div></div>
+
+<!-- 感想クイック入力バー -->
+<div class="moodbar" id="moodBar"></div>
+
 <!-- 安全モード -->
 <div class="safety" id="safety">
   <h2>安全がいちばん。無理は禁物です。</h2>
@@ -355,15 +393,32 @@ const pad2 = n => String(n).padStart(2, "0");
 const hm = t => { const d = new Date(t); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); };
 function fb(img, emoji){ const s = document.createElement("span"); s.className = "emoji-fb"; s.textContent = emoji; img.replaceWith(s); }
 window.fb = fb;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function copyText(text, okMsg){
+  const done = () => toast(okMsg, null, "");
+  if (navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  else fallbackCopy(text, done);
+}
+function fallbackCopy(text, done){
+  const ta = document.createElement("textarea");
+  ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); done(); } catch {}
+  ta.remove();
+}
 
 /* ============ 状態（localStorage破損時はキー単位でフォールバック） ============ */
 function safeGet(key, def){
   try { const v = JSON.parse(localStorage.getItem(key)); return v == null ? def : v; }
   catch { return def; }
 }
+const emptySession = () => ({ start: null, log: [], quizzes: [], name: "", rounds: [] });
 let settings = sanitizeSettings(safeGet("dcSettings", null));
-let session  = safeGet("dcSession", null) || { start: null, log: [], quizzes: [] };
+let session  = safeGet("dcSession", null) || emptySession();
 if (!Array.isArray(session.quizzes)) session.quizzes = [];
+if (!Array.isArray(session.rounds)) session.rounds = [];
+if (typeof session.name !== "string") session.name = "";
 let history  = safeGet("dcHistory", []);
 let reviews  = safeGet("dcReviews", []);
 function save(){
@@ -373,17 +428,32 @@ function save(){
   localStorage.setItem("dcReviews",  JSON.stringify(reviews));
 }
 
+/* セッション詳細（レポート用）を履歴エントリに保存・マージする */
+function sessionDetail(endMs){
+  return { start: session.start, end: endMs, name: session.name,
+    rounds: session.rounds, log: session.log, quizzes: session.quizzes };
+}
+function mergeDetail(ex, d){
+  if (!ex.detail){ ex.detail = d; return; }
+  ex.detail.log.push(...d.log);
+  ex.detail.quizzes = (ex.detail.quizzes || []).concat(d.quizzes || []);
+  ex.detail.rounds = (ex.detail.rounds || []).concat(d.rounds || []);
+  ex.detail.end = Math.max(ex.detail.end, d.end);
+  ex.detail.name = ex.detail.name || d.name;
+}
+
 /* 12時間自動アーカイブ（起動時） */
 function archiveSession(){
   const drinks = session.log.filter(e => !e.water);
   const total = Math.round(drinks.reduce((s, e) => s + e.g, 0) * 10) / 10;
   if (total > 0){
     const key = localKey(new Date(session.start));
+    const detail = sessionDetail(Math.max(...session.log.map(e => e.t)));
     const ex = history.find(h => h.date === key);
-    if (ex){ ex.g = Math.round((ex.g + total) * 10) / 10; ex.cups += drinks.length; }
-    else history.push({ date: key, g: total, cups: drinks.length });
+    if (ex){ ex.g = Math.round((ex.g + total) * 10) / 10; ex.cups += drinks.length; mergeDetail(ex, detail); }
+    else history.push({ date: key, g: total, cups: drinks.length, detail });
   }
-  session = { start: null, log: [], quizzes: [] };
+  session = emptySession();
   save();
 }
 if (session.start && Date.now() - session.start > 12 * 3600000) archiveSession();
@@ -407,6 +477,7 @@ function addDrink(i){
   if (before && after && after > before) showEtaDelta(Math.round((after - before) / 60000));
   if (navigator.vibrate) navigator.vibrate(25);
   render();
+  showMoodBar(session.log[session.log.length - 1].t);
 }
 function addWater(){
   if (!session.start) session.start = Date.now();
@@ -416,8 +487,10 @@ function addWater(){
   toast(prevMsg.water, "assets/mascot-water.webp", "💧");
 }
 function undoLast(){
+  if (session.log.length === 0) return;
   session.log.pop();
-  if (session.log.length === 0) session.start = null;
+  if (session.log.length === 0 && session.rounds.length === 0) session.start = null;
+  hideMoodBar();
   save(); render();
 }
 function showEtaDelta(min){
@@ -437,6 +510,20 @@ function toast(msg, imgSrc, emoji){
 /* ============ 描画 ============ */
 function render(){
   const now = Date.now();
+
+  // 乾杯ボタン・会情報
+  $("kanpaiCard").style.display = session.start ? "none" : "block";
+  const pr = $("partyRow");
+  if (session.start && session.rounds.length){
+    const cur = session.rounds[session.rounds.length - 1];
+    pr.style.display = "flex";
+    pr.innerHTML = `<span>🍻 ${session.name ? esc(session.name) + "・" : ""}${esc(cur.label)}<span style="color:var(--sub);font-weight:400">（${hm(cur.t)}〜）</span></span>
+      <button onclick="nextRound()">${esc(nextRoundLabel())}へ →</button>`;
+  } else if (session.start){
+    pr.style.display = "flex";
+    pr.innerHTML = `<span style="color:var(--sub);font-weight:400">🍻 飲み会 記録中</span><button onclick="openKanpai()">会の情報を付ける</button>`;
+  } else pr.style.display = "none";
+
   const drinks = session.log.filter(e => !e.water);
   const total = Math.round(session.log.reduce((s, e) => s + e.g, 0) * 10) / 10;
   $("totalG").textContent = total;
@@ -496,7 +583,7 @@ function render(){
     $("etaTime").textContent = (d.getDate() !== new Date(now).getDate() ? "翌 " : "") + hm(eta);
     $("etaSub").textContent = "シラフ予測（あと" + ((eta - now) / 3600000).toFixed(1) + "時間）";
   } else { $("etaTime").textContent = "—"; $("etaSub").textContent = "シラフ予測（飲むと後ろにずれます）"; }
-  drawGraph(now, eta);
+  drawSessionGraph($("bacCanvas"), session, now, "今");
 
   // 飲みIQチップ・チェック促し
   const iq = lastIq();
@@ -512,34 +599,42 @@ function render(){
     ul.innerHTML = `<li class="empty" style="border:none"><img src="assets/mascot-happy.webp" alt="" onerror="fb(this,'🍻')"><span>まだ記録がありません。<br>今夜も賢く楽しく！</span></li>`;
   } else {
     ul.innerHTML = [...session.log].reverse().map(e =>
-      `<li><span>${e.emoji} ${e.name}${e.water ? "" : ` <span class="num" style="color:var(--amber)">${e.g}g</span>`}</span><span class="num">${hm(e.t)}</span></li>`).join("");
+      `<li${e.water ? "" : ` onclick="openMood(${e.t})"`}><span>${e.emoji} ${esc(e.name)}${e.water ? "" : ` <span class="num" style="color:var(--amber)">${e.g}g</span>`}${e.mood ? ` <span style="font-size:12px">${esc(e.mood)}</span>` : ""}${e.note ? `<div style="font-size:11px;color:var(--sub);font-weight:400;margin-top:2px">📝 ${esc(e.note)}</div>` : ""}</span><span class="num">${hm(e.t)}</span></li>`).join("");
   }
   renderHistory();
   renderSettingsInfo();
 }
 
-function drawGraph(now, eta){
-  const cv = $("bacCanvas");
+function drawSessionGraph(cv, sess, now, nowLabel){
   const dpr = window.devicePixelRatio || 1;
   const W = cv.clientWidth, H = 150;
   cv.width = W * dpr; cv.height = H * dpr;
   const ctx = cv.getContext("2d");
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
-  if (!session.start){ ctx.fillStyle = "#93a0b4"; ctx.font = "12px sans-serif"; ctx.fillText("記録するとBAC推移が表示されます", 12, 80); return; }
-  const series = bacSeries(session, settings, now, 5);
+  if (!sess.start){ ctx.fillStyle = "#93a0b4"; ctx.font = "12px sans-serif"; ctx.fillText("記録するとBAC推移が表示されます", 12, 80); return; }
+  const eta = soberEta(sess, settings, now);
+  const series = bacSeries(sess, settings, now, 5);
   if (series.length < 2) return;
   const t0 = series[0].t, t1 = series[series.length - 1].t;
   const peak = Math.max(0.08, ...series.map(p => p.bac)) * 1.15;
   const X = t => 8 + (t - t0) / (t1 - t0) * (W - 16);
   const Y = b => H - 18 - (b / peak) * (H - 30);
-  // 酔い段階の帯
-  const bands = [[0, 0.02, "#3ecf8e"], [0.02, 0.05, "#9acD5a"], [0.05, 0.11, "#f5a623"], [0.11, 0.16, "#f57e23"], [0.16, peak, "#ff5c5c"]];
+  // 酔い段階の帯（右端に段階名の補助ラベル）
+  const bands = [[0, 0.02, "#3ecf8e", ""], [0.02, 0.05, "#9acD5a", "爽快"], [0.05, 0.11, "#f5a623", "ほろ酔い"],
+                 [0.11, 0.16, "#f57e23", "酩酊初期"], [0.16, peak, "#ff5c5c", "酩酊〜"]];
   for (const [a, b, c] of bands){
     if (a >= peak) continue;
     ctx.fillStyle = c + "16";
     ctx.fillRect(8, Y(Math.min(b, peak)), W - 16, Y(a) - Y(Math.min(b, peak)));
   }
+  ctx.font = "9px sans-serif"; ctx.textAlign = "right";
+  for (const [a, b, c, label] of bands){
+    if (!label || a >= peak) continue;
+    const yB = Y(a), yT = Y(Math.min(b, peak));
+    if (yB - yT >= 12){ ctx.fillStyle = c + "cc"; ctx.fillText(label, W - 10, yB - 3); }
+  }
+  ctx.textAlign = "left";
   // 実績（実線）と予測（点線）
   const seg = (pts, dash, color) => {
     if (pts.length < 2) return;
@@ -552,15 +647,15 @@ function drawGraph(now, eta){
   const pred = series.filter((p, i) => p.predicted || i === actual.length - 1);
   seg(actual, [], "#f5a623");
   seg(pred, [5, 4], "#5ca8ff");
-  // 今マーカー
+  // 現在位置マーカー
   ctx.strokeStyle = "rgba(238,240,245,.45)"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(X(now), 6); ctx.lineTo(X(now), H - 16); ctx.stroke();
-  const nowB = bacAt(session, settings, now);
+  const nowB = bacAt(sess, settings, now);
   ctx.fillStyle = "#f5e9d0"; ctx.beginPath(); ctx.arc(X(now), Y(nowB), 4, 0, 7); ctx.fill();
   // 軸ラベル
   ctx.fillStyle = "#93a0b4"; ctx.font = "10px sans-serif";
   ctx.fillText(hm(t0), 8, H - 4);
-  ctx.fillText("今", Math.min(X(now), W - 30), H - 4);
+  ctx.fillText(nowLabel, Math.min(X(now), W - 30), H - 4);
   if (eta) ctx.fillText("シラフ " + hm(eta), W - 78, H - 4);
 }
 
@@ -664,6 +759,7 @@ function finishQuiz(){
   save();
   const seq = session.quizzes.filter(q => q.iq != null).map(q => q.iq);
   if (seq.length >= 2) inner += `<div class="trend num">今夜の推移: ${seq.join(" → ")}</div>`;
+  inner += `<button class="bigbtn ghost" onclick="startQuiz(false)">🧠 テストをもう一度</button>`;
   inner += `<button class="bigbtn" onclick="quizIdleView()">閉じる</button>`;
   box.innerHTML = inner;
   render();
@@ -685,7 +781,7 @@ let scSaved = false;
 function openScorecard(){
   const drinks = session.log.filter(e => !e.water);
   if (drinks.length === 0){
-    if (session.log.length && confirm("記録をリセットしますか？")){ session = { start: null, log: [], quizzes: [] }; save(); render(); }
+    if ((session.log.length || session.start) && confirm("記録をリセットしますか？")){ session = emptySession(); save(); render(); }
     return;
   }
   scSaved = false;
@@ -708,18 +804,26 @@ function openScorecard(){
     <div class="titlebox">👑 称号「${title}」</div>
     ${stk > 0 ? `<div class="streak">🔥 上限内 ${stk}日連続</div>` : ""}
     <button class="bigbtn" id="scSave">保存して閉じる</button>
+    <button class="bigbtn ghost" id="scShare">📣 シェア</button>
     <button class="bigbtn ghost" onclick="closeScorecard()">まだ飲み会に戻る</button>`;
   $("scOverlay").classList.add("show");
   $("scSave").onclick = () => {
     if (scSaved) return;
     scSaved = true;
+    const detail = sessionDetail(Date.now());
     const ex2 = history.find(h => h.date === key);
-    if (ex2){ ex2.g = Math.round((ex2.g + card.totalG) * 10) / 10; ex2.cups = (ex2.cups || 0) + drinks.length; ex2.grade = card.grade; ex2.points = card.points; }
-    else history.push({ date: key, g: card.totalG, cups: drinks.length, grade: card.grade, points: card.points });
-    session = { start: null, log: [], quizzes: [] };
+    if (ex2){ ex2.g = Math.round((ex2.g + card.totalG) * 10) / 10; ex2.cups = (ex2.cups || 0) + drinks.length; ex2.grade = card.grade; ex2.points = card.points; mergeDetail(ex2, detail); }
+    else history.push({ date: key, g: card.totalG, cups: drinks.length, grade: card.grade, points: card.points, detail });
+    session = emptySession();
     save();
     closeScorecard();
     render();
+    toast("お疲れさま！明日、履歴タブの📋からレポートが見られます", "assets/mascot-happy.webp", "🙂");
+  };
+  $("scShare").onclick = () => {
+    const text = `🍻今夜の成績表: グレード${card.grade}（${card.points}点・合計${card.totalG}g）👑称号「${title}」 #飲酒カウンター`;
+    if (navigator.share) navigator.share({ text }).catch(() => {});
+    else copyText(text, "シェア用テキストをコピーしました📣");
   };
 }
 function closeScorecard(){ $("scOverlay").classList.remove("show"); }
@@ -732,7 +836,7 @@ function renderHistory(){
     const d = dayAtNoon(i);
     const key = localKey(d);
     const hEntry = history.find(x => x.date === key);
-    days.push({ key, label: (d.getMonth() + 1) + "/" + d.getDate(), g: hEntry ? hEntry.g : 0, grade: hEntry ? hEntry.grade : null });
+    days.push({ key, label: (d.getMonth() + 1) + "/" + d.getDate(), g: hEntry ? hEntry.g : 0, grade: hEntry ? hEntry.grade : null, hasDetail: !!(hEntry && hEntry.detail) });
   }
   const max = Math.max(40, ...days.map(d => d.g));
   const gradeColor = g => g === "S" || g === "A" ? "var(--green)" : g === "B" ? "var(--amber)" : "var(--red)";
@@ -740,7 +844,7 @@ function renderHistory(){
     const c = d.g === 0 ? "var(--card2)" : d.g <= 20 ? "var(--green)" : d.g <= 40 ? "var(--amber)" : "var(--red)";
     return `<div class="hist-day"><span class="d num">${d.label}</span>
       <div class="hb"><div style="width:${d.g / max * 100}%;background:${c}"></div></div>
-      <span class="n2 num">${d.g ? d.g + "g" : "休"}${d.grade ? `<span class="gr" style="background:${gradeColor(d.grade)}22;color:${gradeColor(d.grade)}">${d.grade}</span>` : ""}</span></div>`;
+      <span class="n2 num">${d.g ? d.g + "g" : "休"}${d.grade ? `<span class="gr" style="background:${gradeColor(d.grade)}22;color:${gradeColor(d.grade)}">${d.grade}</span>` : ""}</span>${d.hasDetail ? `<button class="rpbtn" onclick="openReport('${d.key}')">📋</button>` : ""}</div>`;
   }).join("");
   const last7 = days.slice(7);
   const wt = Math.round(last7.reduce((s, d) => s + d.g, 0) * 10) / 10;
@@ -812,11 +916,165 @@ function renderAnalysis(){
        <span style="font-size:12px;color:var(--sub)">このあたりから翌朝がつらくなりやすい傾向です</span><br>
        <button class="bigbtn ghost" style="margin-top:8px" onclick="applyFail(${fl})">上限を ${fl}g に設定する</button></div>`
     : `<div class="note">振り返り（後悔度・二日酔い度）が増えると、自分の限界ラインを推定します。</div>`;
+  const recent = [...reviews].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  $("revList").innerHTML = recent.length
+    ? `<div style="font-size:12.5px;color:var(--sub);margin-top:12px;font-weight:600">過去の振り返り</div>` +
+      recent.map(r => `<div class="revitem"><span class="num">${r.date}</span> <b class="num" style="color:var(--txt)">${r.g}g</b> ／ 二日酔い度 ${r.hangover}・後悔度 ${r.regret}${r.memo ? `<br>📝 ${esc(r.memo)}` : ""}</div>`).join("")
+    : "";
 }
 function applyFail(g){
   settings = sanitizeSettings({ ...settings, limit: g });
   save(); bindSettings(); render();
   toast("上限を " + settings.limit + "g に設定しました", null, "");
+}
+
+/* ============ 汎用シート ============ */
+function openUx(html){ $("uxSheet").innerHTML = html; $("uxOverlay").classList.add("show"); }
+function closeUx(){ $("uxOverlay").classList.remove("show"); }
+
+/* ============ 乾杯・会情報 ============ */
+const ROUND_ORDER = ["一次会", "二次会", "三次会", "四次会", "五次会", "六次会"];
+let kpType = "一次会";
+function openKanpai(){
+  kpType = session.rounds.length ? session.rounds[session.rounds.length - 1].label : "一次会";
+  openUx(`
+    <div class="cardtitle">🍻 乾杯の準備</div>
+    <div class="note" style="text-align:center">どれも任意。そのまま乾杯でもOK</div>
+    <input type="text" id="kpName" placeholder="会の名前（例：同期会）" style="margin:12px 0 4px" value="${esc(session.name)}">
+    <div class="chips" id="kpChips">${["一次会", "二次会", "三次会", "家飲み", "その他"].map(t =>
+      `<button class="${t === kpType ? "sel" : ""}" onclick="kpSel(this,'${t}')">${t}</button>`).join("")}</div>
+    <button class="bigbtn" onclick="startParty()">🍻 乾杯！</button>`);
+}
+function kpSel(btn, t){
+  kpType = t;
+  document.querySelectorAll("#kpChips button").forEach(b => b.classList.toggle("sel", b === btn));
+}
+function startParty(){
+  if (!session.start) session.start = Date.now();
+  session.name = $("kpName").value.trim();
+  session.rounds = [{ label: kpType, t: session.start }];
+  save(); closeUx(); render();
+  toast("乾杯！今夜も賢く楽しく🍻", "assets/mascot-cheers.webp", "🍻");
+}
+function nextRoundLabel(){
+  const last = session.rounds[session.rounds.length - 1];
+  if (last){ const i = ROUND_ORDER.indexOf(last.label); if (i >= 0 && i + 1 < ROUND_ORDER.length) return ROUND_ORDER[i + 1]; }
+  return (session.rounds.length + 1) + "軒目";
+}
+function nextRound(){
+  const label = nextRoundLabel();
+  session.rounds.push({ label, t: Date.now() });
+  save(); render();
+  toast(label + "スタート！水も一杯どうぞ", "assets/mascot-cheers.webp", "🍻");
+}
+
+/* ============ 感想（チップ＋任意メモ） ============ */
+const MOODS = ["😋 うまい！", "😌 まだ余裕", "🥴 回ってきた", "🫠 だいぶキテる"];
+let moodTimer = null;
+function findLog(t){ return session.log.find(e => e.t === t); }
+function showMoodBar(t){
+  const bar = $("moodBar");
+  bar.innerHTML = MOODS.map(m => `<button onclick="quickMood(${t},'${m}')">${m}</button>`).join("")
+    + `<button onclick="openMood(${t})">✏️ メモ</button>`;
+  bar.classList.add("show");
+  clearTimeout(moodTimer);
+  moodTimer = setTimeout(hideMoodBar, 8000);
+}
+function hideMoodBar(){ $("moodBar").classList.remove("show"); }
+function quickMood(t, m){
+  const e = findLog(t);
+  if (e){ e.mood = m; save(); render(); }
+  hideMoodBar();
+  toast(m + " を記録しました", null, "");
+}
+let mdSel = null;
+function openMood(t){
+  const e = findLog(t);
+  if (!e || e.water) return;
+  hideMoodBar();
+  mdSel = e.mood || null;
+  openUx(`
+    <div class="cardtitle">${e.emoji} ${esc(e.name)}（${hm(e.t)}）の感想</div>
+    <div class="chips" id="mdChips" style="justify-content:center">${MOODS.map(m =>
+      `<button class="${m === mdSel ? "sel" : ""}" onclick="mdToggle(this,'${m}')">${m}</button>`).join("")}</div>
+    <textarea id="mdMemo" rows="2" placeholder="ひとことメモ（任意）">${esc(e.note || "")}</textarea>
+    <button class="bigbtn" onclick="saveMood(${t})">保存</button>`);
+}
+function mdToggle(btn, m){
+  mdSel = mdSel === m ? null : m;
+  document.querySelectorAll("#mdChips button").forEach(b => b.classList.toggle("sel", b.textContent === mdSel));
+}
+function saveMood(t){
+  const e = findLog(t);
+  if (e){
+    e.mood = mdSel || undefined;
+    const note = $("mdMemo").value.trim();
+    e.note = note || undefined;
+    save(); render();
+    toast("感想を記録しました✍️", null, "");
+  }
+  closeUx();
+}
+
+/* ============ 飲み会レポート ============ */
+function openReport(key){
+  const h = history.find(x => x.date === key);
+  if (!h || !h.detail) return;
+  const dt = h.detail;
+  const sess = { start: dt.start, log: dt.log };
+  const drinks = dt.log.filter(e => !e.water);
+  const waters = dt.log.filter(e => e.water);
+  const events = [
+    ...(dt.rounds || []).map(r => ({ t: r.t, html: `🍻 <b>${esc(r.label)}スタート</b>${dt.name ? "（" + esc(dt.name) + "）" : ""}` })),
+    ...dt.log.map(e => ({ t: e.t, html: `${e.emoji} ${esc(e.name)}${e.water ? "" : ` <span class="num" style="color:var(--amber)">${e.g}g</span>`}${e.mood ? " " + esc(e.mood) : ""}${e.note ? `<div style="font-size:11px;color:var(--sub)">📝 ${esc(e.note)}</div>` : ""}` })),
+    ...(dt.quizzes || []).map(q => ({ t: q.t, html: `🧠 認知チェック ${q.iq != null ? `飲みIQ <b class="num">${q.iq}</b>` : `<b class="num">${q.pct}%</b>`}` })),
+  ].sort((a, b) => a.t - b.t);
+  openUx(`
+    <div class="cardtitle">📋 ${key}${dt.name ? " " + esc(dt.name) : ""} レポート</div>
+    <div class="trend num" style="margin:2px 0 8px">合計 ${h.g}g ／ ${drinks.length}杯 ＋ 水${waters.length}杯 ／ ${hm(dt.start)}〜${hm(dt.end)}${h.grade ? ` ／ グレード ${h.grade}` : ""}</div>
+    <canvas id="rpCanvas" style="width:100%;height:150px"></canvas>
+    <ul class="tl">${events.map(e => `<li><span class="tt num">${hm(e.t)}</span><span style="flex:1">${e.html}</span></li>`).join("")}</ul>
+    <button class="bigbtn ghost" onclick="copyForAI('${key}')">🤖 AI用にコピー（グラレコ指示つき）</button>
+    <button class="bigbtn" onclick="closeUx()">閉じる</button>`);
+  requestAnimationFrame(() => drawSessionGraph($("rpCanvas"), sess, dt.end, "終了"));
+}
+function copyForAI(key){
+  const h = history.find(x => x.date === key);
+  if (!h || !h.detail) return;
+  const dt = h.detail;
+  const data = {
+    app: "飲酒カウンター v2", date: key, party: dt.name || null,
+    rounds: (dt.rounds || []).map(r => ({ label: r.label, time: hm(r.t) })),
+    events: dt.log.map(e => ({ time: hm(e.t), item: e.name, alcohol_g: e.g || undefined, water: e.water || undefined, mood: e.mood, note: e.note })),
+    cognitive_tests: (dt.quizzes || []).map(q => ({ time: hm(q.t), drink_iq: q.iq, index_pct: q.indexPct })),
+    total_alcohol_g: h.g, drink_count: h.cups, grade: h.grade || null,
+  };
+  const text = "以下は「飲酒カウンター」アプリで記録した飲み会のデータです。\n" +
+    "このJSONをもとに、飲み会の流れが一目でわかる【グラフィックレコーディング風】の1枚のビジュアル（HTML・SVG・画像どれでも可）を作ってください。\n" +
+    "・時系列で「何を飲んだか」「ペース」「水分補給」「感想」を楽しく可視化\n" +
+    "・飲みIQ（認知テスト）の推移があれば折れ線などで表現\n" +
+    "・ポップで温かいタッチ、日本語で\n\n```json\n" + JSON.stringify(data, null, 1) + "\n```";
+  copyText(text, "AI用データをコピーしました。ClaudeやChatGPTに貼ってね🤖");
+}
+
+/* ============ BAC解説 ============ */
+function toggleBacInfo(){
+  const el = $("bacInfo");
+  const show = el.style.display === "none";
+  el.style.display = show ? "block" : "none";
+  if (show && !el.innerHTML){
+    el.innerHTML = `<b>BAC = 血中アルコール濃度（%）</b>。飲んだ純アルコール量と体重・性別から推定し（Widmark式）、
+      時間とともに分解されて下がります。グラフの色帯は下の目安に対応しています。
+      <table class="bactable">
+        <tr><td>🙂 0.02〜0.05%</td><td>爽快期</td><td>気分さわやか・陽気に</td></tr>
+        <tr><td>😊 0.05〜0.11%</td><td>ほろ酔い期</td><td>ほろ酔い・体温上昇</td></tr>
+        <tr><td>🥴 0.11〜0.16%</td><td>酩酊初期</td><td>気が大きくなる・ふらつき</td></tr>
+        <tr><td>😵 0.16〜0.31%</td><td>酩酊期</td><td>千鳥足・同じ話を繰り返す</td></tr>
+        <tr><td>🫠 0.31〜0.41%</td><td>泥酔期</td><td>まともに立てない・記憶が飛ぶ</td></tr>
+        <tr><td>🚨 0.41%〜</td><td>昏睡リスク</td><td>命の危険。ためらわず119</td></tr>
+      </table>
+      あくまで<b>粗い推定</b>です。体調・空腹・服薬などで実際はもっと強く出ることがあります。運転可否の判断には使えません。`;
+  }
 }
 
 /* ============ 設定 ============ */
@@ -872,6 +1130,7 @@ function tab(name){
 /* ============ 初期化 ============ */
 $("drinkGrid").innerHTML = DRINKS.map((d, i) =>
   `<button class="drink" onclick="addDrink(${i})"><span class="emoji">${d.emoji}</span>${d.name}<span class="g num">${pureAlcoholG(d.ml, d.abv)}g</span></button>`).join("");
+$("uxOverlay").addEventListener("click", e => { if (e.target === $("uxOverlay")) closeUx(); });
 bindSettings();
 quizIdleView();
 render();
