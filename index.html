@@ -357,6 +357,7 @@
   <div class="field"><label>今夜の上限 (純アルコールg)</label><input type="number" id="sLimit" min="10" max="150" step="5"></div>
   <div class="field"><label>ペース警告 (g/時)</label><input type="number" id="sPace" min="5" max="100" step="5"></div>
   <div class="field"><label>おちょこ1杯の容量 (mL)</label><input type="number" id="sOchoko" min="10" max="100" step="5"></div>
+  <button class="bigbtn" style="margin:2px 0 12px" onclick="saveSettings()">💾 設定を保存</button>
 
   <div class="card">
     <h2>基準テスト（シラフの時に実施）</h2>
@@ -1343,15 +1344,13 @@ function renderSettingsInfo(){
     ? `基準測定済み: <b class="num">${settings.baselinePct}%</b>。体調が大きく変わったら測り直しを。`
     : "未測定。シラフの時に一度測っておくと、飲酒中に「飲みIQ」で比較できます。";
 }
-["sWeight", "sSex", "sLimit", "sPace", "sOchoko"].forEach(id => {
-  document.addEventListener("change", e => {
-    if (e.target.id !== id) return;
-    settings = sanitizeAll({ ...settings,
-      weight: +$("sWeight").value, sex: $("sSex").value,
-      limit: +$("sLimit").value, pace: +$("sPace").value, ochoko: +$("sOchoko").value });
-    save(); bindSettings(); render();
-  });
-});
+function saveSettings(){
+  settings = sanitizeAll({ ...settings,
+    weight: +$("sWeight").value, sex: $("sSex").value,
+    limit: +$("sLimit").value, pace: +$("sPace").value, ochoko: +$("sOchoko").value });
+  save(); bindSettings(); render();
+  toast("設定を保存しました", "assets/mascot-happy.webp", "💾");
+}
 function exportData(){
   const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), settings, history, reviews }, null, 2)],
     { type: "application/json" });
