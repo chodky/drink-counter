@@ -266,7 +266,7 @@
     <canvas id="bacCanvas"></canvas>
     <div class="eta">
       <div><div class="t num" id="etaTime">—</div><div class="s" id="etaSub">シラフ予測（飲むと後ろにずれます）</div></div>
-      <div style="font-size:26px">🌅</div>
+      <img class="si" style="width:42px;height:42px" src="assets/icons/misc-sunrise.png" alt="" onerror="fb(this,'🌅')">
       <div class="etadelta num" id="etaDelta"></div>
     </div>
     <div class="stagebox">
@@ -362,7 +362,8 @@
   <div class="card">
     <h2>基準テスト（シラフの時に実施）</h2>
     <div class="note" id="baseNote" style="margin:0 0 9px"></div>
-    <button class="bigbtn ghost" onclick="startQuiz(true)">📏 基準テストを実施する</button>
+    <button class="bigbtn ghost" onclick="startQuiz(true)">📏 基準テストを実施する（約3分）</button>
+    <div class="note" style="margin-top:8px">ウォームアップ2問（採点外）＋6問×2本の平均で基準を決めます。基準のズレはその後の飲みIQ全部に響くので、少しだけ丁寧に測ります。</div>
   </div>
 
   <div class="card">
@@ -722,11 +723,15 @@ function drawSessionGraph(cv, sess, now, nowLabel){
 
 /* ============ 認知テスト ============ */
 const TIER_JP = { genius: "冴えすぎ", sharp: "切れ味キープ", okay: "まだ大丈夫そう", slipping: "少し低下", drunk: "だいぶ酔い", closed: "店じまい" };
-let quiz = { active: false, baseline: false, idx: 0, level: 2, results: [], q: null, t0: 0, timer: null, input: "" };
+let quiz = { active: false, baseline: false, idx: 0, level: 2, results: [], q: null, t0: 0, timer: null, input: "",
+             warmup: false, block: 1, blockPcts: [] };
 
 function startQuiz(isBaseline){
   if (quiz.active) return;
-  quiz = { active: true, baseline: isBaseline, idx: 0, level: 2, results: [], q: null, t0: 0, timer: null, input: "" };
+  // 基準テストはウォームアップ2問（採点外）＋6問×2ブロックの平均。
+  // 基準の誤差は以後の全飲みIQに引き継がれるため、通常テストより厚く測る
+  quiz = { active: true, baseline: isBaseline, idx: 0, level: 2, results: [], q: null, t0: 0, timer: null, input: "",
+           warmup: isBaseline, block: 1, blockPcts: [] };
   tab("chk");
   $("quizIdle").style.display = "none";
   $("quizResult").style.display = "none";
@@ -736,7 +741,9 @@ function startQuiz(isBaseline){
 function nextQuestion(){
   quiz.q = makeQuestion(quiz.level);
   quiz.input = "";
-  $("qNo").textContent = `問題 ${quiz.idx + 1}/6` + (quiz.baseline ? "（基準）" : "");
+  $("qNo").textContent = quiz.baseline
+    ? (quiz.warmup ? `ウォームアップ ${quiz.idx + 1}/2（採点外）` : `問題 ${quiz.idx + 1}/6（基準 ${quiz.block}本目/2）`)
+    : `問題 ${quiz.idx + 1}/6`;
   $("qLv").textContent = "レベル " + quiz.q.level;
   $("qAns").innerHTML = "&nbsp;";
   if (quiz.q.type === "reverse"){
@@ -774,7 +781,24 @@ function recordAnswer(val){
   quiz.results.push({ level: quiz.q.level, correct, ms });
   quiz.level = nextLevel(quiz.level, correct);
   quiz.idx++;
-  if (quiz.idx >= 6) finishQuiz(); else nextQuestion();
+  if (quiz.baseline && quiz.warmup){
+    if (quiz.idx >= 2){
+      quiz.warmup = false; quiz.idx = 0; quiz.level = 2; quiz.results = [];
+      toast("ウォームアップ終了。ここから本番です🧠", null, "");
+    }
+    nextQuestion();
+    return;
+  }
+  if (quiz.idx < 6){ nextQuestion(); return; }
+  if (quiz.baseline && quiz.block === 1){
+    const sc = scoreQuiz(quiz.results, 2);
+    quiz.blockPcts.push(sc.pct);
+    quiz.block = 2; quiz.idx = 0; quiz.level = 2; quiz.results = [];
+    toast(`1本目 ${sc.pct}%。同じ形式でもう1本！`, null, "");
+    nextQuestion();
+    return;
+  }
+  finishQuiz();
 }
 function finishQuiz(){
   const sc = scoreQuiz(quiz.results, 2);
@@ -785,11 +809,14 @@ function finishQuiz(){
   box.style.display = "block";
 
   if (wasBaseline){
-    settings.baselinePct = Math.max(1, sc.pct);
+    const pcts = [...quiz.blockPcts, sc.pct];
+    const avg = Math.max(1, Math.round(pcts.reduce((s, p) => s + p, 0) / pcts.length));
+    settings.baselinePct = avg;
     save();
-    box.innerHTML = `<div class="iqbig"><div class="l">シラフ基準を保存しました</div>
-      <div class="n num" style="font-size:44px">${sc.pct}%</div>
-      <div class="l">この成績が「飲みIQ 120」の基準になります</div></div>
+    box.innerHTML = `<div class="iqbig"><div class="l">シラフ基準を保存しました（2本の平均）</div>
+      <div class="n num" style="font-size:44px">${avg}%</div>
+      <div class="l num">1本目 ${pcts[0]}% ／ 2本目 ${pcts[1]}%</div>
+      <div class="l" style="margin-top:6px">この成績が「飲みIQ 120」の基準になります</div></div>
       <button class="bigbtn" onclick="quizIdleView()">OK</button>`;
     return;
   }
