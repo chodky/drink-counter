@@ -236,6 +236,7 @@
   .tl li{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--card2);font-size:13px;align-items:baseline}
   .tl .tt{color:var(--sub);width:42px;flex:none;font-size:11.5px}
   .rpbtn{border:none;background:var(--card2);color:var(--txt);border-radius:6px;font-size:11px;padding:3px 6px;margin-left:4px;cursor:pointer}
+  .rpbtn img{width:15px;height:15px;vertical-align:-3px;object-fit:contain}
   .revitem{font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--card2);color:var(--sub);line-height:1.6}
 </style>
 </head>
@@ -247,7 +248,7 @@
 <!-- ================= 記録タブ ================= -->
 <div class="panel on" id="p-rec">
   <div class="card" id="kanpaiCard" style="display:none">
-    <button class="bigbtn" style="margin-top:0" onclick="openKanpai()">🍻 乾杯！（飲み会スタート）</button>
+    <button class="bigbtn" style="margin-top:0" onclick="openKanpai()"><img class="bi" src="assets/icons/action-kanpai.png" alt="" onerror="fb(this,'🍻')">乾杯！（飲み会スタート）</button>
     <div class="note" style="text-align:center;margin-top:6px">会の名前や一次会/二次会も記録できます（任意）。ドリンクを直接タップしてもOK</div>
   </div>
   <div class="card">
@@ -565,14 +566,15 @@ function render(){
   // 乾杯ボタン・会情報
   $("kanpaiCard").style.display = session.start ? "none" : "block";
   const pr = $("partyRow");
+  const kp = `<img class="mi" src="assets/icons/action-kanpai.png" alt="" onerror="fb(this,'🍻')">`;
   if (session.start && session.rounds.length){
     const cur = session.rounds[session.rounds.length - 1];
     pr.style.display = "flex";
-    pr.innerHTML = `<span>🍻 ${session.name ? esc(session.name) + "・" : ""}${esc(cur.label)}<span style="color:var(--sub);font-weight:400">（${hm(cur.t)}〜）</span></span>
+    pr.innerHTML = `<span>${kp} ${session.name ? esc(session.name) + "・" : ""}${esc(cur.label)}<span style="color:var(--sub);font-weight:400">（${hm(cur.t)}〜）</span></span>
       <button onclick="nextRound()">${esc(nextRoundLabel())}へ →</button>`;
   } else if (session.start){
     pr.style.display = "flex";
-    pr.innerHTML = `<span style="color:var(--sub);font-weight:400">🍻 飲み会 記録中</span><button onclick="openKanpai()">会の情報を付ける</button>`;
+    pr.innerHTML = `<span style="color:var(--sub);font-weight:400">${kp} 飲み会 記録中</span><button onclick="openKanpai()">会の情報を付ける</button>`;
   } else pr.style.display = "none";
 
   const drinks = session.log.filter(e => !e.water);
@@ -903,7 +905,7 @@ function openScorecard(){
     ${stk > 0 ? `<div class="streak">🔥 上限内 ${stk}日連続</div>` : ""}
     <div class="note" style="text-align:center">🚗 成績にかかわらず運転はできません。体内のアルコールは表示より長く残ることがあります。</div>
     <button class="bigbtn" id="scSave">保存して閉じる</button>
-    <button class="bigbtn ghost" id="scShare">📣 シェア</button>
+    <button class="bigbtn ghost" id="scShare"><img class="bi" src="assets/icons/action-share.png" alt="" onerror="fb(this,'📣')">シェア</button>
     <button class="bigbtn ghost" onclick="closeScorecard()">まだ飲み会に戻る</button>`;
   $("scOverlay").classList.add("show");
   $("scSave").onclick = () => {
@@ -943,7 +945,7 @@ function renderHistory(){
     const c = d.g === 0 ? "var(--card2)" : d.g <= 20 ? "var(--green)" : d.g <= 40 ? "var(--amber)" : "var(--red)";
     return `<div class="hist-day"><span class="d num">${d.label}</span>
       <div class="hb"><div style="width:${d.g / max * 100}%;background:${c}"></div></div>
-      <span class="n2 num">${d.g ? d.g + "g" : "休"}${d.grade ? `<span class="gr" style="background:${gradeColor(d.grade)}22;color:${gradeColor(d.grade)}">${d.grade}</span>` : ""}</span>${d.hasDetail ? `<button class="rpbtn" onclick="openReport('${d.key}')">📋</button>` : ""}</div>`;
+      <span class="n2 num">${d.g ? d.g + "g" : "休"}${d.grade ? `<span class="gr" style="background:${gradeColor(d.grade)}22;color:${gradeColor(d.grade)}">${d.grade}</span>` : ""}</span>${d.hasDetail ? `<button class="rpbtn" onclick="openReport('${d.key}')"><img src="assets/icons/action-report.png" alt="📋" onerror="fb(this,'📋')"></button>` : ""}</div>`;
   }).join("");
   const last7 = days.slice(7);
   const wt = Math.round(last7.reduce((s, d) => s + d.g, 0) * 10) / 10;
@@ -1214,7 +1216,7 @@ let kpType = "一次会";
 function openKanpai(){
   kpType = session.rounds.length ? session.rounds[session.rounds.length - 1].label : "一次会";
   openUx(`
-    <div class="cardtitle">🍻 乾杯の準備</div>
+    <div class="cardtitle"><img class="bi" src="assets/icons/action-kanpai.png" alt="" onerror="fb(this,'🍻')">乾杯の準備</div>
     <div class="note" style="text-align:center">どれも任意。そのまま乾杯でもOK</div>
     <input type="text" id="kpName" placeholder="会の名前（例：同期会）" style="margin:12px 0 4px" value="${esc(session.name)}">
     <div class="chips" id="kpChips">${["一次会", "二次会", "三次会", "家飲み", "その他"].map(t =>
@@ -1264,7 +1266,7 @@ function showMoodBar(t){
   const bar = $("moodBar");
   bar.innerHTML = MOODS.map((m, i) =>
     `<button onclick="quickMood(${t},${i})"><img class="mi" src="${ICON(m.icon)}" alt="" onerror="fb(this,'😋')"> ${m.label}</button>`).join("")
-    + `<button onclick="openMood(${t})">✏️ メモ</button>`;
+    + `<button onclick="openMood(${t})"><img class="mi" src="${ICON("action-memo.png")}" alt="" onerror="fb(this,'✏️')"> メモ</button>`;
   bar.classList.add("show");
   clearTimeout(moodTimer);
   moodTimer = setTimeout(hideMoodBar, 8000);
@@ -1320,11 +1322,11 @@ function openReport(key){
     ...(dt.quizzes || []).map(q => ({ t: q.t, html: `🧠 認知チェック ${q.iq != null ? `飲みIQ <b class="num">${q.iq}</b>` : `<b class="num">${q.pct}%</b>`}` })),
   ].sort((a, b) => a.t - b.t);
   openUx(`
-    <div class="cardtitle">📋 ${key}${dt.name ? " " + esc(dt.name) : ""} レポート</div>
+    <div class="cardtitle"><img class="bi" src="assets/icons/action-report.png" alt="" onerror="fb(this,'📋')">${key}${dt.name ? " " + esc(dt.name) : ""} レポート</div>
     <div class="trend num" style="margin:2px 0 8px">合計 ${h.g}g ／ ${drinks.length}杯 ＋ 水${waters.length}杯 ／ ${hm(dt.start)}〜${hm(dt.end)}${h.grade ? ` ／ グレード ${h.grade}` : ""}</div>
     <canvas id="rpCanvas" style="width:100%;height:150px"></canvas>
     <ul class="tl">${events.map(e => `<li><span class="tt num">${hm(e.t)}</span><span style="flex:1">${e.html}</span></li>`).join("")}</ul>
-    <button class="bigbtn ghost" onclick="copyForAI('${key}')">🤖 AI用にコピー（グラレコ指示つき）</button>
+    <button class="bigbtn ghost" onclick="copyForAI('${key}')"><img class="bi" src="assets/icons/action-ai.png" alt="" onerror="fb(this,'🤖')">AI用にコピー（グラレコ指示つき）</button>
     <button class="bigbtn" onclick="closeUx()">閉じる</button>`);
   requestAnimationFrame(() => drawSessionGraph($("rpCanvas"), sess, dt.end, "終了"));
 }
