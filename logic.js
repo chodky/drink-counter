@@ -1,8 +1,11 @@
 /**
  * 飲酒カウンター v2 — コアロジック（検証済み）
- * UIから独立した純関数群。GPTはこのファイルを <script> で読み込むか
- * 単一HTMLに埋め込み、UI層からこれらの関数だけを呼べばよい。
- * ロジックの改変は不要（改変しないこと）。
+ * UIから独立した純関数群。UI層からこれらの関数だけを呼べばよい。
+ *
+ * v3拡張（2026/7/15・外部AIレビュー反映）:
+ * - 吸収時間を settings.absorbMin（30/60/120分）で可変に（未指定は従来の30分）
+ * - 将来予測・消失めやす計算に betaFuture 引数を追加（安全側β=0.10で呼べる。
+ *   未指定は従来のβ=0.15で完全後方互換）
  */
 
 // ================= 定数 =================
@@ -78,11 +81,11 @@ function stageOf(bac) {
  * 各ドリンクは摂取時刻から ABSORB_MIN 分かけて線形に吸収されるとみなす。
  * log: [{t:摂取時刻ms, g:純アルコールg, water:bool}]
  */
-function absorbedGrams(log, tMs) {
+function absorbedGrams(log, tMs, absorbMin = ABSORB_MIN) {
   let a = 0;
   for (const e of log) {
     if (e.water || e.t > tMs) continue;
-    const frac = Math.min(1, (tMs - e.t) / (ABSORB_MIN * 60000));
+    const frac = Math.min(1, (tMs - e.t) / (absorbMin * 60000));
     a += e.g * frac;
   }
   return a;
@@ -101,13 +104,14 @@ function bacAt(session, settings, tMs) {
   if (!session.start || tMs < session.start) return 0;
   const r = R[settings.sex] || R.m;
   const W = settings.weight;
+  const am = settings.absorbMin || ABSORB_MIN;
   const stepMs = 60000; // 1分刻み
   let c = 0; // g/L
   let prev = session.start;
   let prevA = 0;
   while (prev < tMs) {
     const cur = Math.min(prev + stepMs, tMs);
-    const curA = absorbedGrams(session.log, cur);
+    const curA = absorbedGrams(session.log, cur, am);
     const dtH = (cur - prev) / 3600000;
     c = Math.max(0, c + (curA - prevA) / (W * r) - BETA * dtH);
     prev = cur;
@@ -117,15 +121,38 @@ function bacAt(session, settings, tMs) {
 }
 
 /**
+ * 「今」までは実績β（0.15）、「今」以降は betaFuture で減衰させたハイブリッド推定BAC(%)。
+ * 消失めやすを安全側（遅い代謝 β=0.10）で出すために使う。
+ * betaFuture = BETA（既定）なら bacAt() と完全一致する。
+ */
+function bacAtHybrid(session, settings, nowMs, tMs, betaFuture = BETA) {
+  if (tMs <= nowMs) return bacAt(session, settings, tMs);
+  const r = R[settings.sex] || R.m;
+  const W = settings.weight;
+  const am = settings.absorbMin || ABSORB_MIN;
+  let c = bacAt(session, settings, nowMs) * 10; // g/L
+  let prev = nowMs;
+  let prevA = absorbedGrams(session.log, nowMs, am);
+  while (prev < tMs) {
+    const cur = Math.min(prev + 60000, tMs);
+    const curA = absorbedGrams(session.log, cur, am);
+    c = Math.max(0, c + (curA - prevA) / (W * r) - betaFuture * (cur - prev) / 3600000);
+    prev = cur;
+    prevA = curA;
+  }
+  return c / 10;
+}
+
+/**
  * BAC推移グラフ用の時系列。飲み始め〜シラフ予測までを stepMin 分刻みで返す。
  * 戻り値: [{t:ms, bac:%, predicted:bool}]  predicted=true は「今」より未来（追加飲酒なし前提の点線部）
  */
-function bacSeries(session, settings, nowMs, stepMin = 5) {
+function bacSeries(session, settings, nowMs, stepMin = 5, betaFuture = BETA) {
   if (!session.start) return [];
-  const end = soberEta(session, settings, nowMs) || nowMs;
+  const end = soberEta(session, settings, nowMs, betaFuture) || nowMs;
   const out = [];
   for (let t = session.start; t <= end + stepMin * 60000; t += stepMin * 60000) {
-    out.push({ t, bac: bacAt(session, settings, t), predicted: t > nowMs });
+    out.push({ t, bac: bacAtHybrid(session, settings, nowMs, t, betaFuture), predicted: t > nowMs });
   }
   return out;
 }
@@ -134,29 +161,30 @@ function bacSeries(session, settings, nowMs, stepMin = 5) {
  * シラフ予測時刻（BACが0.005%未満に戻る時刻ms）。追加飲酒なし前提。
  * 未飲酒なら null。
  */
-function soberEta(session, settings, nowMs) {
+function soberEta(session, settings, nowMs, betaFuture = BETA) {
   if (!session.start) return null;
   const drinks = session.log.filter(e => !e.water);
   if (drinks.length === 0) return null;
   const total = drinks.reduce((s, e) => s + e.g, 0);
   const r = R[settings.sex] || R.m;
+  const am = settings.absorbMin || ABSORB_MIN;
   // 全ドリンクの吸収完了時刻。これより前はBACが再上昇しうるため、
   // 「現在BACが低い＝もうシラフ」と即時判定してはいけない（飲んだ直後バグの原因）。
-  const absorbEnd = Math.max(...drinks.map(e => e.t)) + ABSORB_MIN * 60000;
+  const absorbEnd = Math.max(...drinks.map(e => e.t)) + am * 60000;
   // 探索下限: 「今」と吸収完了時刻の遅い方（これ以降BACは単調減少）
   const lo0 = Math.max(nowMs, absorbEnd);
-  if (bacAt(session, settings, lo0) < 0.005) return lo0;
+  if (bacAtHybrid(session, settings, nowMs, lo0, betaFuture) < 0.005) return lo0;
   // 探索上限: 「最終ドリンク時点で全量が残っていた」と仮定した理論的分解完了時刻＋余裕。
   // 実際はそれ以前に一部分解済みのため、ゼロクロスは必ずこれ以前。
   // 念のため上限がまだ閾値以上なら1時間ずつ拡張する（最大72時間で打ち切り）。
   let lo = lo0;
   const lastT = Math.max(...drinks.map(e => e.t));
   let hi = Math.max(lo + 3600000,
-    lastT + (total / (settings.weight * r) / BETA) * 3600000 + ABSORB_MIN * 60000);
-  while (bacAt(session, settings, hi) >= 0.005 && hi - lo < 72 * 3600000) hi += 3600000;
+    lastT + (total / (settings.weight * r) / Math.min(BETA, betaFuture)) * 3600000 + am * 60000);
+  while (bacAtHybrid(session, settings, nowMs, hi, betaFuture) >= 0.005 && hi - lo < 72 * 3600000) hi += 3600000;
   for (let i = 0; i < 40; i++) {
     const mid = (lo + hi) / 2;
-    if (bacAt(session, settings, mid) < 0.005) hi = mid; else lo = mid;
+    if (bacAtHybrid(session, settings, nowMs, mid, betaFuture) < 0.005) hi = mid; else lo = mid;
   }
   return Math.round(hi);
 }
@@ -717,7 +745,7 @@ function sanitizeSettings(s) {
 // Node.js テスト用エクスポート（ブラウザでは無視される）
 if (typeof module !== "undefined") {
   module.exports = { DRINKS, SYMPTOMS, MEDS, pureAlcoholG, localKey, stageOf, absorbedGrams, bacAt,
-    bacSeries, soberEta, makeQuestion, nextLevel, scoreQuiz, cognitiveIndex,
+    bacAtHybrid, bacSeries, soberEta, makeQuestion, nextLevel, scoreQuiz, cognitiveIndex,
     drinkIQ, contextComment, pickWithoutRepeat, pickTitle, IQ_COMMENTS, CONTEXT_COMMENTS,
     IQ_TITLES, SAFETY_NOTICE, scorecard, streak, estimateFailureLine, sanitizeSettings };
 }

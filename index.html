@@ -265,7 +265,7 @@
 
     <canvas id="bacCanvas"></canvas>
     <div class="eta">
-      <div><div class="t num" id="etaTime">—</div><div class="s" id="etaSub">シラフ予測（飲むと後ろにずれます）</div></div>
+      <div><div class="t num" id="etaTime">—</div><div class="s" id="etaSub">アルコール消失めやす（飲むと後ろにずれます）</div></div>
       <img class="si" style="width:42px;height:42px" src="assets/icons/misc-sunrise.png" alt="" onerror="fb(this,'🌅')">
       <div class="etadelta num" id="etaDelta"></div>
     </div>
@@ -273,6 +273,7 @@
       <div><div class="n" id="stageName">シラフ</div><div class="b num" id="stageBac">推定血中アルコール濃度 0.000%</div></div>
       <div style="font-size:28px" id="stageEmoji">😀</div>
     </div>
+    <div class="note" style="margin-top:8px">🚗 運転可否の判断には使えません。めやすは計算上0.005%未満になる時刻で、個人差により実際はもっと長く残ることがあります。</div>
     <div class="chip" id="quizNudge" style="display:none" onclick="tab('chk')">🧠 そろそろチェックしてみる？</div>
     <div class="chip num" id="iqChip" style="display:none"></div>
     <div class="chip" onclick="toggleBacInfo()"><img class="mi" src="assets/icons/action-info.png" alt="" onerror="fb(this,'❓')"> 血中アルコール濃度とは？</div>
@@ -357,6 +358,8 @@
   <div class="field"><label>今夜の上限 (純アルコールg)</label><input type="number" id="sLimit" min="10" max="150" step="5"></div>
   <div class="field"><label>ペース警告 (g/時)</label><input type="number" id="sPace" min="5" max="100" step="5"></div>
   <div class="field"><label>おちょこ1杯の容量 (mL)</label><input type="number" id="sOchoko" min="10" max="100" step="5"></div>
+  <div class="field"><label>食事（吸収の速さ）</label>
+    <select id="sAbsorb"><option value="30">空腹（速い・30分）</option><option value="60">食事あり（標準・60分）</option><option value="120">しっかり食事（遅い・120分）</option></select></div>
   <button class="bigbtn" style="margin:2px 0 12px" onclick="saveSettings()">💾 設定を保存</button>
 
   <div class="card">
@@ -375,8 +378,10 @@
 
   <div class="note">
     ・純アルコール量(g) = 容量(ml) × 度数(%) ÷ 100 × 0.8<br>
-    ・血中アルコール濃度とシラフ予測はWidmark式に基づく<b>粗い推定</b>です。体調・空腹・加齢・服薬などで実際の酔いは
-    これより強く出ることがあります。<br>
+    ・血中アルコール濃度とアルコール消失めやすはWidmark式に基づく<b>粗い推定</b>です。体調・空腹・加齢・服薬などで実際の酔いは
+    これより強く・長く出ることがあります。<br>
+    ・消失めやすは「計算上0.005%未満になる時刻」であり、医学的・法的なシラフの定義ではありません。
+    予測は安全側（遅い代謝 β=0.10 g/L/時）で計算しています。<br>
     ・飲みIQ・認知チェックは医学的な知能検査・認知機能検査ではなく、シラフの自分との比較による
     セルフモニタリングです。<br>
     ・<b>運転可否や医学的判断には使えません。飲んだら乗らない。</b><br>
@@ -454,8 +459,12 @@ function sanitizeAll(s){
   const base = sanitizeSettings(s);
   const n = Number(s && s.ochoko);
   base.ochoko = Number.isFinite(n) ? Math.min(100, Math.max(10, n)) : 30;
+  const am = Number(s && s.absorbMin);
+  base.absorbMin = [30, 60, 120].includes(am) ? am : 60; // 食事あり60分を既定に
   return base;
 }
+/* 消失めやす・予測曲線は安全側（遅い代謝）のβで計算する。実績はlogic.js既定の0.15 */
+const PREDICT_BETA = 0.10;
 let settings = sanitizeAll(safeGet("dcSettings", null));
 let session  = safeGet("dcSession", null) || emptySession();
 if (!Array.isArray(session.quizzes)) session.quizzes = [];
@@ -510,12 +519,12 @@ function lastCogIndex(){ const q = session.quizzes[session.quizzes.length - 1]; 
 function lastIq(){ for (let i = session.quizzes.length - 1; i >= 0; i--){ if (session.quizzes[i].iq != null) return session.quizzes[i].iq; } return null; }
 
 function recordDrinkEntry(def){
-  const before = soberEta(session, settings, Date.now());
+  const before = soberEta(session, settings, Date.now(), PREDICT_BETA);
   if (!session.start) session.start = Date.now();
   const g = drinkG(def);
   session.log.push({ t: Date.now(), water: false, emoji: "🍺", ...def, name: def.displayName, g, alcoholG: g });
   save();
-  const after = soberEta(session, settings, Date.now());
+  const after = soberEta(session, settings, Date.now(), PREDICT_BETA);
   if (before && after && after > before) showEtaDelta(Math.round((after - before) / 60000));
   if (navigator.vibrate) navigator.vibrate(25);
   render();
@@ -620,12 +629,12 @@ function render(){
   $("stageEmoji").innerHTML = STAGE_ICON[st.name]
     ? `<img class="si" src="${ICON(STAGE_ICON[st.name])}" alt="" onerror="fb(this,'${st.emoji}')">` : st.emoji;
   $("stageBac").textContent = `推定血中アルコール濃度 ${bac.toFixed(3)}%（${Math.round(bac * 1000)}mg/dL）`;
-  const eta = soberEta(session, settings, now);
+  const eta = soberEta(session, settings, now, PREDICT_BETA);
   if (eta){
     const d = new Date(eta);
     $("etaTime").textContent = (d.getDate() !== new Date(now).getDate() ? "翌 " : "") + hm(eta);
-    $("etaSub").textContent = "シラフ予測（あと" + ((eta - now) / 3600000).toFixed(1) + "時間）";
-  } else { $("etaTime").textContent = "—"; $("etaSub").textContent = "シラフ予測（飲むと後ろにずれます）"; }
+    $("etaSub").textContent = "アルコール消失めやす（あと" + ((eta - now) / 3600000).toFixed(1) + "時間）";
+  } else { $("etaTime").textContent = "—"; $("etaSub").textContent = "アルコール消失めやす（飲むと後ろにずれます）"; }
   drawSessionGraph($("bacCanvas"), session, now, "今");
 
   // 飲みIQチップ・チェック促し
@@ -660,8 +669,8 @@ function drawSessionGraph(cv, sess, now, nowLabel){
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
   if (!sess.start){ ctx.fillStyle = "#93a0b4"; ctx.font = "12px sans-serif"; ctx.fillText("記録すると血中アルコール濃度の推移が表示されます", 12, 80); return; }
-  const eta = soberEta(sess, settings, now);
-  const series = bacSeries(sess, settings, now, 5);
+  const eta = soberEta(sess, settings, now, PREDICT_BETA);
+  const series = bacSeries(sess, settings, now, 5, PREDICT_BETA);
   if (series.length < 2) return;
   const t0 = series[0].t, t1 = series[series.length - 1].t;
   const peak = Math.max(0.08, ...series.map(p => p.bac)) * 1.15;
@@ -718,7 +727,7 @@ function drawSessionGraph(cv, sess, now, nowLabel){
   ctx.fillStyle = "#93a0b4"; ctx.font = "10px sans-serif";
   ctx.fillText(hm(t0), 8, H - 4);
   ctx.fillText(nowLabel, Math.min(X(now), W - 30), H - 4);
-  if (eta) ctx.fillText("シラフ " + hm(eta), W - 78, H - 4);
+  if (eta) ctx.fillText("ほぼ0 " + hm(eta), W - 74, H - 4);
 }
 
 /* ============ 認知テスト ============ */
@@ -847,6 +856,7 @@ function finishQuiz(){
   save();
   const seq = session.quizzes.filter(q => q.iq != null).map(q => q.iq);
   if (seq.length >= 2) inner += `<div class="trend num">今夜の推移: ${seq.join(" → ")}</div>`;
+  inner += `<div class="note" style="text-align:center;margin-top:10px">🚗 この結果を運転可否の判断に使わないでください</div>`;
   inner += `<button class="bigbtn ghost" onclick="startQuiz(false)">🧠 テストをもう一度</button>`;
   inner += `<button class="bigbtn" onclick="quizIdleView()">閉じる</button>`;
   box.innerHTML = inner;
@@ -891,6 +901,7 @@ function openScorecard(){
       `<li><span>${b.label}</span>${b.skipped ? '<span class="bskip">未測定</span>' : b.ok ? '<span class="bok">◯</span>' : '<span class="bng">✕</span>'}</li>`).join("")}</ul>
     <div class="titlebox">👑 称号「${title}」</div>
     ${stk > 0 ? `<div class="streak">🔥 上限内 ${stk}日連続</div>` : ""}
+    <div class="note" style="text-align:center">🚗 成績にかかわらず運転はできません。体内のアルコールは表示より長く残ることがあります。</div>
     <button class="bigbtn" id="scSave">保存して閉じる</button>
     <button class="bigbtn ghost" id="scShare">📣 シェア</button>
     <button class="bigbtn ghost" onclick="closeScorecard()">まだ飲み会に戻る</button>`;
@@ -1354,7 +1365,14 @@ function toggleBacInfo(){
         <tr><td>🫠 0.31〜0.41%</td><td>泥酔期</td><td>まともに立てない・記憶が飛ぶ</td></tr>
         <tr><td>🚨 0.41%〜</td><td>昏睡リスク</td><td>命の危険。ためらわず119</td></tr>
       </table>
-      あくまで<b>粗い推定</b>です。体調・空腹・服薬などで実際はもっと強く出ることがあります。運転可否の判断には使えません。`;
+      <br><b>計算の前提（正直に書きます）</b><br>
+      ・分布係数rは男性0.68／女性0.55の固定値。体脂肪率・年齢・筋肉量・水分状態は反映されない概算です<br>
+      ・消失速度には大きな個人差があります（β 0.10〜0.20 g/L/時程度）。実績の推定は平均値0.15、
+      <b>消失めやすと予測の点線は遅い代謝（0.10）で安全側に</b>計算しています<br>
+      ・吸収時間は設定の食事条件（空腹30分／食事あり60分／しっかり120分）による計算上の仮定です<br>
+      ・「消失めやす」は計算上0.005%未満になる時刻で、医学的・法的な「シラフ」の定義ではありません<br>
+      あくまで<b>粗い推定</b>です。体調・服薬などで実際はもっと強く・長く残ることがあります。
+      <b>表示が0でも運転はできません。飲んだら乗らない。</b>`;
   }
 }
 
@@ -1365,6 +1383,7 @@ function bindSettings(){
   $("sLimit").value = settings.limit;
   $("sPace").value = settings.pace;
   $("sOchoko").value = settings.ochoko;
+  $("sAbsorb").value = settings.absorbMin;
 }
 function renderSettingsInfo(){
   $("baseNote").innerHTML = settings.baselinePct
@@ -1374,7 +1393,8 @@ function renderSettingsInfo(){
 function saveSettings(){
   settings = sanitizeAll({ ...settings,
     weight: +$("sWeight").value, sex: $("sSex").value,
-    limit: +$("sLimit").value, pace: +$("sPace").value, ochoko: +$("sOchoko").value });
+    limit: +$("sLimit").value, pace: +$("sPace").value, ochoko: +$("sOchoko").value,
+    absorbMin: +$("sAbsorb").value });
   save(); bindSettings(); render();
   toast("設定を保存しました", "assets/mascot-happy.webp", "💾");
 }
