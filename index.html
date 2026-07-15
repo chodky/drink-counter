@@ -294,16 +294,26 @@
     <button class="undo" style="flex:0 0 31%" onclick="undoLast()"><img class="bi" src="assets/icons/action-undo.png" alt="" onerror="fb(this,'↩︎')">取り消し</button>
     <button class="end" onclick="openScorecard()"><img class="bi" src="assets/icons/action-finish.png" alt="" onerror="fb(this,'🏁')">いまの成績表を見る</button>
   </div>
+  <button class="bigbtn ghost" style="margin:0 0 11px" onclick="tab('chk')"><img class="bi" src="assets/icons/tab-check.png" alt="" onerror="fb(this,'🧠')">飲みIQチェック（認知テスト）</button>
   <button class="sos" onclick="openSafety()"><img class="bi" src="assets/icons/action-sos.png" alt="" onerror="fb(this,'🆘')">気分が悪いとき（安全ガイドを表示）</button>
+</div>
 
-  <div class="card log">
-    <h2>今夜のログ</h2>
-    <ul id="logList"></ul>
+<!-- ================= ログタブ（今夜のタイムライン） ================= -->
+<div class="panel" id="p-log">
+  <div class="statrow">
+    <div class="stat"><div class="v num" id="lgTotal">0g</div><div class="l">純アルコール</div></div>
+    <div class="stat"><div class="v num" id="lgCups">0杯</div><div class="l">ドリンク</div></div>
+    <div class="stat"><div class="v num" id="lgWater">0杯</div><div class="l">水</div></div>
+  </div>
+  <div class="card">
+    <h2>今夜のタイムライン（ドリンクをタップで感想を編集）</h2>
+    <ul class="tl" id="logTimeline"></ul>
   </div>
 </div>
 
-<!-- ================= チェックタブ ================= -->
+<!-- ================= チェック画面（記録タブのボタンから遷移） ================= -->
 <div class="panel" id="p-chk">
+  <button class="backlink" onclick="tab('rec')">‹ 記録に戻る</button>
   <div class="card" id="quizIdle">
     <h2>認知機能チェック（計算テスト・全6問）</h2>
     <div class="empty" style="margin-bottom:10px">
@@ -361,10 +371,8 @@
     <select id="sSex"><option value="m">男性</option><option value="f">女性</option></select></div>
   <div class="field"><label>今夜の上限 (純アルコールg)</label><input type="number" id="sLimit" min="10" max="150" step="5"></div>
   <div class="field"><label>ペース警告 (g/時)</label><input type="number" id="sPace" min="5" max="100" step="5"></div>
-  <div class="field"><label>おちょこ1杯の容量 (mL)</label><input type="number" id="sOchoko" min="10" max="100" step="5"></div>
-  <div class="field"><label>食事（吸収の速さ）</label>
-    <select id="sAbsorb"><option value="30">空腹（速い・30分）</option><option value="60">食事あり（標準・60分）</option><option value="120">しっかり食事（遅い・120分）</option></select></div>
   <button class="bigbtn" style="margin:2px 0 12px" onclick="saveSettings()">💾 設定を保存</button>
+  <div class="note" style="margin:-4px 0 12px">食事（吸収の速さ）は乾杯時に選べます。飲み会の途中で変えたいときは、画面上部の会情報（🍻）をタップ。</div>
 
   <div class="card">
     <h2>基準テスト（シラフの時に実施）</h2>
@@ -396,7 +404,7 @@
 <!-- タブバー -->
 <div class="tabs">
   <button class="on" id="tb-rec" onclick="tab('rec')"><span class="ti"><img src="assets/icons/tab-record.png" alt="" onerror="fb(this,'🍻')"></span>記録</button>
-  <button id="tb-chk" onclick="tab('chk')"><span class="ti"><img src="assets/icons/tab-check.png" alt="" onerror="fb(this,'🧠')"></span>チェック</button>
+  <button id="tb-log" onclick="tab('log')"><span class="ti"><img src="assets/icons/action-report.png" alt="" onerror="fb(this,'📝')"></span>ログ</button>
   <button id="tb-his" onclick="tab('his')"><span class="ti"><img src="assets/icons/tab-history.png" alt="" onerror="fb(this,'📊')"></span>履歴</button>
   <button id="tb-set" onclick="tab('set')"><span class="ti"><img src="assets/icons/tab-settings.png" alt="" onerror="fb(this,'⚙️')"></span>設定</button>
 </div>
@@ -577,7 +585,7 @@ function render(){
   if (session.start && session.rounds.length){
     const cur = session.rounds[session.rounds.length - 1];
     pr.style.display = "flex";
-    pr.innerHTML = `<span>${kp} ${session.name ? esc(session.name) + "・" : ""}${esc(cur.label)}<span style="color:var(--sub);font-weight:400">（${hm(cur.t)}〜）</span></span>
+    pr.innerHTML = `<span onclick="openKanpai()" style="cursor:pointer">${kp} ${session.name ? esc(session.name) + "・" : ""}${esc(cur.label)}<span style="color:var(--sub);font-weight:400">（${hm(cur.t)}〜）✎</span></span>
       <button onclick="nextRound()">${esc(nextRoundLabel())}へ →</button>`;
   } else if (session.start){
     pr.style.display = "flex";
@@ -654,17 +662,31 @@ function render(){
   $("quizNudge").style.display =
     (session.start && drinks.length > 0 && now - lastQ > 45 * 60000 && !quiz.active) ? "inline-block" : "none";
 
-  // ログ
-  const ul = $("logList");
-  if (session.log.length === 0){
-    ul.innerHTML = `<li class="empty" style="border:none"><img src="assets/mascot-happy.webp" alt="" onerror="fb(this,'🍻')"><span>まだ記録がありません。<br>今夜も賢く楽しく！</span></li>`;
-  } else {
-    ul.innerHTML = [...session.log].reverse().map(e =>
-      `<li${e.water ? "" : ` onclick="openMood(${e.t})"`}><span>${logIcon(e)} ${esc(e.name)}${e.water ? "" : ` <span class="num" style="color:var(--amber)">${e.g}g${e.estimated ? "*" : ""}</span>`}${e.mood ? " " + moodHtml(e.mood) : ""}${e.note ? `<div style="font-size:11px;color:var(--sub);font-weight:400;margin-top:2px">📝 ${esc(e.note)}</div>` : ""}</span><span class="num">${hm(e.t)}</span></li>`).join("");
-  }
+  renderLogPage();
   renderGrid();
   renderHistory();
   renderSettingsInfo();
+}
+
+/* ============ ログタブ（今夜のタイムライン） ============ */
+function renderLogPage(){
+  const drinks = session.log.filter(e => !e.water);
+  const waters = session.log.filter(e => e.water);
+  $("lgTotal").textContent = (Math.round(drinks.reduce((s, e) => s + e.g, 0) * 10) / 10) + "g";
+  $("lgCups").textContent = drinks.length + "杯";
+  $("lgWater").textContent = waters.length + "杯";
+  const ul = $("logTimeline");
+  if (!session.log.length && !session.rounds.length){
+    ul.innerHTML = `<li class="empty" style="border:none"><img src="assets/mascot-happy.webp" alt="" onerror="fb(this,'🍻')"><span>まだ記録がありません。<br>今夜も賢く楽しく！</span></li>`;
+    return;
+  }
+  const events = [
+    ...session.rounds.map(r => ({ t: r.t, html: `<img class="mi" src="${ICON("action-kanpai.png")}" alt="" onerror="fb(this,'🍻')"> <b>${esc(r.label)}スタート</b>${session.name ? `（${esc(session.name)}）` : ""}` })),
+    ...session.log.map(e => ({ t: e.t, click: e.water ? "" : ` onclick="openMood(${e.t})" style="cursor:pointer"`,
+      html: `${logIcon(e)} ${esc(e.name)}${e.water ? "" : ` <span class="num" style="color:var(--amber)">${e.g}g${e.estimated ? "*" : ""}</span>`}${e.mood ? " " + moodHtml(e.mood) : ""}${e.note ? `<div style="font-size:11px;color:var(--sub);margin-top:2px">📝 ${esc(e.note)}</div>` : ""}` })),
+    ...session.quizzes.map(q => ({ t: q.t, html: `<img class="mi" src="${ICON("tab-check.png")}" alt="" onerror="fb(this,'🧠')"> 認知チェック ${q.iq != null ? `飲みIQ <b class="num">${q.iq}</b>` : `<b class="num">${q.pct}%</b>`}` })),
+  ].sort((a, b) => a.t - b.t);
+  ul.innerHTML = events.map(e => `<li${e.click || ""}><span class="tt num">${hm(e.t)}</span><span style="flex:1">${e.html}</span></li>`).join("");
 }
 
 function drawSessionGraph(cv, sess, now, nowLabel){
@@ -680,8 +702,14 @@ function drawSessionGraph(cv, sess, now, nowLabel){
   ctx.clearRect(0, 0, W, H);
   if (!sess.start){ ctx.fillStyle = "#93a0b4"; ctx.font = "12px sans-serif"; ctx.fillText("記録すると血中アルコール濃度の推移が表示されます", 12, 80); return; }
   const eta = soberEta(sess, settings, now, PREDICT_BETA);
-  const series = bacSeries(sess, settings, now, 5, PREDICT_BETA);
+  const full = bacSeries(sess, settings, now, 5, PREDICT_BETA);
+  if (full.length < 2) return;
+  // 適応ウィンドウ: 予測部分は実績と同程度の幅まで（最低30分）。
+  // 飲み始め直後に予測の尻尾でグラフ左側（実績）が窮屈になるのを防ぐ
+  const winEnd = now + Math.max(30 * 60000, now - sess.start);
+  const series = full.filter(p => p.t <= winEnd);
   if (series.length < 2) return;
+  const truncated = full[full.length - 1].t > winEnd + 5 * 60000;
   const t0 = series[0].t, t1 = series[series.length - 1].t;
   const peak = Math.max(0.08, ...series.map(p => p.bac)) * 1.15;
   const X = t => 8 + (t - t0) / (t1 - t0) * (W - 16);
@@ -733,11 +761,16 @@ function drawSessionGraph(cv, sess, now, nowLabel){
     ctx.fillStyle = "#f5e9d0";
     ctx.fillText(nowB.toFixed(3) + "%", Math.min(X(now) + 7, W - 44), Math.min(Y(nowB) + 12, H - 22));
   }
-  // 軸ラベル
+  // 「今」ラベルは時刻ラベルと重ならないよう縦線の上端に置く
   ctx.fillStyle = "#93a0b4"; ctx.font = "10px sans-serif";
+  ctx.fillText(nowLabel, Math.min(X(now) + 4, W - 26), 12);
+  // 軸ラベル
   ctx.fillText(hm(t0), 8, H - 4);
-  ctx.fillText(nowLabel, Math.min(X(now), W - 30), H - 4);
-  if (eta) ctx.fillText("ほぼ0 " + hm(eta), W - 74, H - 4);
+  if (eta){
+    // ウィンドウ外に消失時刻があるときは「→」で先があることを示す
+    if (truncated) ctx.fillText("→ ほぼ0 " + hm(eta), W - 88, H - 4);
+    else ctx.fillText("ほぼ0 " + hm(eta), W - 74, H - 4);
+  }
 }
 
 /* ============ 認知テスト ============ */
@@ -1061,7 +1094,7 @@ const CAT_META = {
 };
 /* 純アルコールg。蒸留酒は総容量でなく原酒量×度数で計算する */
 const drinkG = d => Math.round((d.spiritMl ?? d.volumeMl) * d.abv / 100 * 0.8 * 10) / 10;
-const OCHOKO = () => settings.ochoko || 30;
+const OCHOKO = () => 30; // おちょこはほぼ同一容量のため30mL固定（変わり種は日本酒の容量指定で）
 
 /* ============ 3×3グリッド（カテゴリ6＋水＋おかわり＋マイドリンク） ============ */
 const lastDrink = () => [...session.log].reverse().find(e => !e.water);
@@ -1121,6 +1154,7 @@ function openMyDrink(){
     <div class="gtitle">いまの気分（任意・記録するときだけ）</div>
     <div class="chips" id="myMoods">${MOODS.map((m, i) =>
       `<button onclick="mySelMood(${i})"><img class="mi" src="${ICON(m.icon)}" alt=""> ${m.label}</button>`).join("")}</div>
+    <input type="text" id="myNote" placeholder="ひとことメモ（任意・自由入力）" style="margin-top:8px">
     <button class="bigbtn" onclick="saveMyDrink(true)">保存して記録する</button>
     <button class="bigbtn ghost" onclick="saveMyDrink(false)">保存だけ（記録しない）</button>`);
 }
@@ -1146,6 +1180,8 @@ function saveMyDrink(alsoRecord){
   if (alsoRecord){
     const def = { ...myDrink };
     if (myMoodSel != null) def.mood = MOODS[myMoodSel].label;
+    const note = $("myNote").value.trim();
+    if (note) def.note = note;
     recordDrinkEntry(def, false);
     toast(`${name} ${drinkG(myDrink)}g を記録しました`, null, "");
   } else {
@@ -1285,6 +1321,7 @@ function renderCat(){
     <div class="gtitle">いまの気分（任意）</div>
     <div class="chips" id="dsMoods">${MOODS.map((m, i) =>
       `<button class="${ds.mood === i ? "sel" : ""}" onclick="dsMood(${i})"><img class="mi" src="${ICON(m.icon)}" alt="" onerror="fb(this,'😋')"> ${m.label}</button>`).join("")}</div>
+    <input type="text" id="dsNote" placeholder="ひとことメモ（任意・自由入力）" value="${esc(ds.note || "")}" oninput="ds.note=this.value" style="margin-top:8px">
     <div class="dspreview"><div class="meta" id="dsMeta"></div><div class="gv num" id="dsG"></div></div>
     <button class="bigbtn" id="dsRec" onclick="dsRecord()">記録する</button>`);
   dsPreview();
@@ -1312,6 +1349,8 @@ function dsRecord(){
   const def = dsResolve();
   if (!def){ toast("数値を入力してね", null, ""); return; }
   if (ds.mood != null) def.mood = MOODS[ds.mood].label;
+  const note = (ds.note || "").trim();
+  if (note) def.note = note;
   closeUx();
   recordDrinkEntry(def);
   toast(`${def.displayName} ${drinkG(def)}g${def.estimated ? "（推定）" : ""} を記録しました`, null, "");
@@ -1334,7 +1373,7 @@ function openKanpai(){
     <div class="gtitle">今夜の食事（酔いの回り方の計算に使います）</div>
     <div class="chips" id="kpMeals">${MEALS.map(m =>
       `<button class="${m.v === kpMeal ? "sel" : ""}" onclick="kpSelMeal(${m.v})">${m.label}</button>`).join("")}</div>
-    <button class="bigbtn" onclick="startParty()">🍻 乾杯！</button>`);
+    <button class="bigbtn" onclick="startParty()">${session.rounds.length ? "保存する" : "🍻 乾杯！"}</button>`);
 }
 function kpSel(btn, t){
   kpType = t;
@@ -1345,12 +1384,15 @@ function kpSelMeal(v){
   document.querySelectorAll("#kpMeals button").forEach((b, i) => b.classList.toggle("sel", MEALS[i].v === v));
 }
 function startParty(){
+  const editing = session.rounds.length > 0;
   if (!session.start) session.start = Date.now();
   session.name = $("kpName").value.trim();
-  session.rounds = [{ label: kpType, t: session.start }];
+  if (editing) session.rounds[session.rounds.length - 1].label = kpType; // 途中編集は現在の会のラベルだけ更新
+  else session.rounds = [{ label: kpType, t: session.start }];
   settings = sanitizeAll({ ...settings, absorbMin: kpMeal });
   save(); bindSettings(); closeUx(); render();
-  toast("乾杯！今夜も賢く楽しく🍻", "assets/mascot-cheers.webp", "🍻");
+  if (editing) toast("会の情報を更新しました", null, "");
+  else toast("乾杯！今夜も賢く楽しく🍻", "assets/mascot-cheers.webp", "🍻");
 }
 function nextRoundLabel(){
   const last = session.rounds[session.rounds.length - 1];
@@ -1515,8 +1557,6 @@ function bindSettings(){
   $("sSex").value = settings.sex;
   $("sLimit").value = settings.limit;
   $("sPace").value = settings.pace;
-  $("sOchoko").value = settings.ochoko;
-  $("sAbsorb").value = settings.absorbMin;
 }
 function renderSettingsInfo(){
   $("baseNote").innerHTML = settings.baselinePct
@@ -1526,8 +1566,7 @@ function renderSettingsInfo(){
 function saveSettings(){
   settings = sanitizeAll({ ...settings,
     weight: +$("sWeight").value, sex: $("sSex").value,
-    limit: +$("sLimit").value, pace: +$("sPace").value, ochoko: +$("sOchoko").value,
-    absorbMin: +$("sAbsorb").value });
+    limit: +$("sLimit").value, pace: +$("sPace").value });
   save(); bindSettings(); render();
   toast("設定を保存しました", "assets/mascot-happy.webp", "💾");
 }
@@ -1559,9 +1598,11 @@ function closeSafety(){ safetyOn = false; $("safety").classList.remove("show"); 
 
 /* ============ タブ ============ */
 function tab(name){
-  ["rec", "chk", "his", "set"].forEach(n => {
-    $("p-" + (n === "rec" ? "rec" : n)).classList.toggle("on", n === name);
-    $("tb-" + n).classList.toggle("on", n === name);
+  ["rec", "log", "chk", "his", "set"].forEach(n => {
+    const p = $("p-" + n);
+    if (p) p.classList.toggle("on", n === name);
+    const b = $("tb-" + n);
+    if (b) b.classList.toggle("on", n === (name === "chk" ? "rec" : name)); // チェック中は記録タブを点灯
   });
   if (name === "chk" && !quiz.active) quizIdleView();
   render();
