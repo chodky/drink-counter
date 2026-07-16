@@ -27,7 +27,8 @@
   html{font-size:16px;touch-action:pan-x pan-y}
   body{background:var(--bg);color:var(--txt);
        font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
-       max-width:480px;margin:0 auto;padding:10px 14px 92px;user-select:none}
+       max-width:480px;margin:0 auto;user-select:none;
+       padding:calc(10px + env(safe-area-inset-top)) 14px 92px} /* PWA全画面時に時計と被らないよう上部セーフエリア分を確保 */
   h1{display:flex;align-items:center;gap:8px;font-size:18px;padding:4px 0 2px}
   h1 img{width:34px;height:34px}
   .tagline{color:var(--sub);font-size:11px;margin-bottom:10px}
@@ -489,6 +490,7 @@ if (!Array.isArray(session.rounds)) session.rounds = [];
 if (typeof session.name !== "string") session.name = "";
 if (session.pledge === undefined) session.pledge = null;
 if (session.wakeTime === undefined) session.wakeTime = null;
+if (session.pledge && session.pledge.lastTrain && !session.pledge.home) session.pledge.home = "train"; // 旧形式の移行
 let history  = safeGet("dcHistory", []);
 let reviews  = safeGet("dcReviews", []);
 let myDrink  = safeGet("dcMyDrink", null);
@@ -556,7 +558,7 @@ function recordDrinkEntry(def, quick = false){
   const cnt = session.log.filter(e => !e.water).length;
   if (p && p.cups != null && cnt > p.cups && !p.excused){
     hideMoodBar();
-    openExcuse(cnt);
+    openExcuse(`「${p.cups}杯まで」のところ${cnt}杯目です`);
     return;
   }
   if (quick) showMoodBar(session.log[session.log.length - 1].t);
@@ -710,7 +712,7 @@ function renderHangover(now){
   else if (rNow < 0.03){ face = "🌧"; msg = "だるい朝コース"; }
   else { face = "⛈"; msg = "ガチ二日酔いコース"; }
   box.style.display = "flex";
-  box.innerHTML = `<div><div class="n" style="font-size:13.5px">${face} 二日酔い予報（${esc(session.wakeTime)}起床）: ${msg}</div>
+  box.innerHTML = `<div><div class="n" style="font-size:13.5px">${face} 二日酔い予報（${esc(session.wakeTime.replace(/^0/, ""))}ごろ起床）: ${msg}</div>
     <div class="b num">いま締める→朝 ${mg(rNow)}mg/dL ／ もう1杯（${esc(String(lastG))}g）→朝 ${mg(rMore)}mg/dL</div></div>`;
 }
 
@@ -945,6 +947,11 @@ function finishQuiz(){
   }
   session.quizzes.push(entry);
   save();
+  // 飲みIQ宣言の答え合わせ（危険表示が優先。言い訳は一晩1回まで）
+  const pl = session.pledge;
+  if (pl && pl.iq && entry.iq != null && entry.iq < pl.iq && !pl.excused && !(ci.pct < 50)){
+    setTimeout(() => openExcuse(`「飲みIQ${pl.iq}を切らない」宣言のところ、飲みIQ${entry.iq}です`), 600);
+  }
   const seq = session.quizzes.filter(q => q.iq != null).map(q => q.iq);
   if (seq.length >= 2) inner += `<div class="trend num">今夜の推移: ${seq.join(" → ")}</div>`;
   inner += `<div class="note" style="text-align:center;margin-top:10px">🚗 この結果を運転可否の判断に使わないでください</div>`;
@@ -990,10 +997,20 @@ function openScorecard(){
     const ok = drinks.length <= p.cups;
     pledgeLines.push(`🤙 宣言「${p.cups}杯まで」→ 実績${drinks.length}杯 ${ok ? "⭕ 有言実行！" : "❌"}`);
   }
-  if (p && p.lastTrain){
+  if (p && p.iq){
+    const iqs = session.quizzes.filter(q => q.iq != null).map(q => q.iq);
+    if (!iqs.length) pledgeLines.push(`🧠 宣言「飲みIQ${p.iq}を切らない」→ 未測定（測っていない時点で怪しい）`);
+    else {
+      const mn = Math.min(...iqs);
+      pledgeLines.push(`🧠 宣言「飲みIQ${p.iq}を切らない」→ 最低${mn} ${mn >= p.iq ? "⭕" : "❌"}`);
+    }
+  }
+  if (p && p.home){
     const eh = new Date().getHours();
-    const okT = !(eh >= 0 && eh < 4); // 深夜0〜4時の終了は日をまたいだとみなす
-    pledgeLines.push(`🚃 宣言「終電で帰る」→ ${hm(Date.now())}終了 ${okT ? "⭕" : "❌ 日をまたいだ"}`);
+    const crossed = eh >= 0 && eh < 4; // 深夜0〜4時の終了は日をまたいだとみなす
+    const label = p.home === "train" ? "終電で帰る" : p.home === "23" ? "23時まで" : "24時まで";
+    const ok = p.home === "23" ? (!crossed && eh < 23) : !crossed;
+    pledgeLines.push(`🏠 宣言「${label}」→ ${hm(Date.now())}終了 ${ok ? "⭕" : "❌"}`);
   }
   if (p && p.excuse) pledgeLines.push(`📝 言い訳：「${esc(p.excuse.text)}」`);
   $("scSheet").innerHTML = `
@@ -1510,28 +1527,50 @@ const ROUND_ORDER = ["一次会", "二次会", "三次会", "四次会", "五次
 const MEALS = [{ v: 30, label: "空腹（あまり食べない）" }, { v: 60, label: "食事あり" }, { v: 120, label: "しっかり食べる" }];
 let kpType = "一次会";
 let kpMeal = 60;
-let kpCups = null;   // 杯数宣言
-let kpTrain = false; // 終電宣言
+let kpCups = null;   // 杯数宣言（number | "custom" | null）
+let kpIq = null;     // 飲みIQ宣言（100 | 110 | null）
+let kpHome = null;   // 帰宅宣言（"train" | "23" | "24" | null）
+let kpWakeSel = null;
+const KP_CUPS = [null, 3, 5, 7, 10, "custom"];
+const KP_HOMES = [[null, "宣言なし"], ["train", "🚃 終電で帰る"], ["23", "23時まで"], ["24", "24時まで"]];
+const KP_WAKES = [null, "5:00", "5:30", "6:00", "6:30", "7:00", "7:30", "8:00", "9:00"];
+let kpNameDraft = "";
+let kpCupsDraft = "";
 function openKanpai(){
   kpType = session.rounds.length ? session.rounds[session.rounds.length - 1].label : "一次会";
   kpMeal = settings.absorbMin;
-  kpCups = session.pledge ? session.pledge.cups : null;
-  kpTrain = session.pledge ? !!session.pledge.lastTrain : false;
+  const p = session.pledge || {};
+  kpCups = p.cups != null ? (KP_CUPS.includes(p.cups) ? p.cups : "custom") : null;
+  kpIq = p.iq || null;
+  kpHome = p.home || null;
+  kpWakeSel = session.wakeTime || null;
+  kpNameDraft = session.name;
+  kpCupsDraft = Number.isFinite(p.cups) && !KP_CUPS.includes(p.cups) ? String(p.cups) : "";
+  renderKanpai();
+}
+function renderKanpai(){
   openUx(`
     <div class="cardtitle"><img class="bi" src="assets/icons/action-kanpai.png" alt="" onerror="fb(this,'🍻')">乾杯の準備</div>
     <div class="note" style="text-align:center">どれも任意。そのまま乾杯でもOK</div>
-    <input type="text" id="kpName" placeholder="会の名前（例：同期会）" style="margin:12px 0 4px" value="${esc(session.name)}">
+    <input type="text" id="kpName" placeholder="会の名前（例：同期会）" style="margin:12px 0 4px" value="${esc(kpNameDraft)}" oninput="kpNameDraft=this.value">
     <div class="chips" id="kpChips">${["一次会", "二次会", "三次会", "家飲み", "その他"].map(t =>
       `<button class="${t === kpType ? "sel" : ""}" onclick="kpSel(this,'${t}')">${t}</button>`).join("")}</div>
     <div class="gtitle">今夜の食事（酔いの回り方の計算に使います）</div>
     <div class="chips" id="kpMeals">${MEALS.map(m =>
       `<button class="${m.v === kpMeal ? "sel" : ""}" onclick="kpSelMeal(${m.v})">${m.label}</button>`).join("")}</div>
-    <div class="gtitle">今夜の宣言（任意・成績表で答え合わせ）</div>
-    <div class="chips" id="kpCupsRow">${[null, 2, 3, 4, 5].map(n =>
-      `<button class="${kpCups === n ? "sel" : ""}" onclick="kpSelCups(${n})">${n == null ? "宣言なし" : n + "杯まで"}</button>`).join("")}</div>
-    <div class="chips"><button id="kpTrainBtn" class="${kpTrain ? "sel" : ""}" onclick="kpToggleTrain()">🚃 終電で帰る</button></div>
-    <div class="gtitle">明日の起床時刻（任意・二日酔い予報が出ます）</div>
-    <div class="chips"><input type="time" id="kpWake" class="dsinput" style="width:130px !important;text-align:left" value="${esc(session.wakeTime || "")}"><span style="align-self:center;color:var(--sub);font-size:12px">空欄なら予報なし</span></div>
+    <div class="gtitle">🍺 杯数宣言（任意・成績表で答え合わせ）</div>
+    <div class="chips" id="kpCupsRow">${KP_CUPS.map((n, i) =>
+      `<button class="${kpCups === n ? "sel" : ""}" onclick="kpSelCups(${i})">${n == null ? "宣言なし" : n === "custom" ? "指定" : n + "杯まで"}</button>`).join("")}
+      ${kpCups === "custom" ? `<input type="number" class="dsinput" id="kpCupsN" inputmode="numeric" placeholder="杯" value="${esc(kpCupsDraft)}" oninput="kpCupsDraft=this.value">` : ""}</div>
+    <div class="gtitle">🧠 飲みIQ宣言（任意・飲酒中テストの最低値で判定）</div>
+    <div class="chips" id="kpIqRow">${[[null, "宣言なし"], [110, "110を切らない"], [100, "100を切らない"]].map(([v, l]) =>
+      `<button class="${kpIq === v ? "sel" : ""}" onclick="kpSelIq(${v})">${l}</button>`).join("")}</div>
+    <div class="gtitle">🏠 帰宅宣言（任意）</div>
+    <div class="chips" id="kpHomeRow">${KP_HOMES.map(([v, l]) =>
+      `<button class="${kpHome === v ? "sel" : ""}" onclick="kpSelHome(${v === null ? "null" : `'${v}'`})">${l}</button>`).join("")}</div>
+    <div class="gtitle">🌅 明日の起床時刻（任意・二日酔い予報が出ます）</div>
+    <div class="chips" id="kpWakeRow">${KP_WAKES.map((w, i) =>
+      `<button class="${kpWakeSel === (w && w.padStart(5, "0")) || (w === null && kpWakeSel === null) ? "sel" : ""}" onclick="kpSelWake(${i})">${w == null ? "予報なし" : w + "ごろ"}</button>`).join("")}</div>
     <button class="bigbtn" onclick="startParty()">${session.rounds.length ? "保存する" : "🍻 乾杯！"}</button>`);
 }
 function kpSel(btn, t){
@@ -1542,33 +1581,44 @@ function kpSelMeal(v){
   kpMeal = v;
   document.querySelectorAll("#kpMeals button").forEach((b, i) => b.classList.toggle("sel", MEALS[i].v === v));
 }
-function kpSelCups(n){
-  kpCups = n;
-  const vals = [null, 2, 3, 4, 5];
-  document.querySelectorAll("#kpCupsRow button").forEach((b, i) => b.classList.toggle("sel", vals[i] === n));
+function kpSelCups(i){
+  kpCups = KP_CUPS[i];
+  renderKanpai(); // 指定入力欄の出し入れがあるため再描画（下書きはkp*変数に保持済み）
 }
-function kpToggleTrain(){
-  kpTrain = !kpTrain;
-  $("kpTrainBtn").classList.toggle("sel", kpTrain);
+function kpSelIq(v){
+  kpIq = v;
+  const vals = [null, 110, 100];
+  document.querySelectorAll("#kpIqRow button").forEach((b, i) => b.classList.toggle("sel", vals[i] === v));
+}
+function kpSelHome(v){
+  kpHome = v;
+  document.querySelectorAll("#kpHomeRow button").forEach((b, i) => b.classList.toggle("sel", KP_HOMES[i][0] === v));
+}
+function kpSelWake(i){
+  const w = KP_WAKES[i];
+  kpWakeSel = w == null ? null : w.padStart(5, "0");
+  document.querySelectorAll("#kpWakeRow button").forEach((b, j) => b.classList.toggle("sel", j === i));
 }
 function startParty(){
   const editing = session.rounds.length > 0;
   if (!session.start) session.start = Date.now();
-  session.name = $("kpName").value.trim();
+  session.name = kpNameDraft.trim();
   if (editing) session.rounds[session.rounds.length - 1].label = kpType; // 途中編集は現在の会のラベルだけ更新
   else session.rounds = [{ label: kpType, t: session.start }];
   settings = sanitizeAll({ ...settings, absorbMin: kpMeal });
   // 宣言（既存の言い訳は保持。上限が緩んで未超過に戻ったら言い訳受付を再開）
+  let cups = kpCups === "custom" ? parseInt(kpCupsDraft, 10) : kpCups;
+  if (kpCups === "custom" && (!Number.isFinite(cups) || cups <= 0)) cups = null;
   const prev = session.pledge || {};
-  if (kpCups != null || kpTrain){
+  if (cups != null || kpIq || kpHome){
     const drinks = session.log.filter(e => !e.water).length;
-    session.pledge = { cups: kpCups, lastTrain: kpTrain, excuse: prev.excuse || null,
-      excused: !!prev.excused && !(kpCups != null && drinks <= kpCups) };
+    session.pledge = { cups: cups ?? null, iq: kpIq, home: kpHome, excuse: prev.excuse || null,
+      excused: !!prev.excused && !(cups != null && drinks <= cups) };
   } else session.pledge = null;
-  session.wakeTime = $("kpWake").value || null;
+  session.wakeTime = kpWakeSel;
   save(); bindSettings(); closeUx(); render();
   if (editing) toast("会の情報を更新しました", null, "");
-  else toast(kpCups != null ? `乾杯！今夜は${kpCups}杯まで、見届けます🍻` : "乾杯！今夜も賢く楽しく🍻", "assets/mascot-cheers.webp", "🍻");
+  else toast(cups != null ? `乾杯！今夜は${cups}杯まで、見届けます🍻` : "乾杯！今夜も賢く楽しく🍻", "assets/mascot-cheers.webp", "🍻");
 }
 
 /* ============ 宣言オーバーの言い訳 ============ */
@@ -1581,11 +1631,11 @@ const EXCUSES = [
   "記憶にございません",
 ];
 let exSel = null;
-function openExcuse(cnt){
+function openExcuse(situation){
   exSel = null;
   openUx(`
     <div class="cardtitle">🤙 宣言オーバー！</div>
-    <div class="note" style="text-align:center">「${session.pledge.cups}杯まで」のところ${cnt}杯目です。<br>言い訳をどうぞ（翌朝の自分が読みます）</div>
+    <div class="note" style="text-align:center">${situation}。<br>言い訳をどうぞ（翌朝の自分が読みます）</div>
     <div class="chips" id="exChips" style="justify-content:center;margin-top:10px">${EXCUSES.map((x, i) =>
       `<button onclick="exToggle(${i})">${x}</button>`).join("")}</div>
     <input type="text" id="exFree" placeholder="自由に言い訳を書く（任意）" style="margin-top:8px">
@@ -1715,7 +1765,8 @@ function partyData(key){
       category: e.category, volume_ml: e.volumeMl, abv_pct: e.abv, spirit_ml: e.spiritMl, style: e.style, estimated: e.estimated || undefined,
       mood: e.mood, note: e.note })),
     cognitive_tests: (dt.quizzes || []).map(q => ({ time: hm(q.t), drink_iq: q.iq, index_pct: q.indexPct })),
-    pledge: dt.pledge ? { cups: dt.pledge.cups, last_train: dt.pledge.lastTrain || undefined,
+    pledge: dt.pledge ? { cups: dt.pledge.cups, min_drink_iq: dt.pledge.iq || undefined,
+      go_home: dt.pledge.home || (dt.pledge.lastTrain ? "train" : undefined),
       excuse: dt.pledge.excuse ? dt.pledge.excuse.text : undefined } : undefined,
     total_alcohol_g: h.g, drink_count: h.cups, grade: h.grade || null, points: h.points ?? null,
   };
