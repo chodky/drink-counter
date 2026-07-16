@@ -883,24 +883,36 @@ function recordAnswer(val){
   quiz.results.push({ level: quiz.q.level, correct, ms });
   quiz.level = nextLevel(quiz.level, correct);
   quiz.idx++;
-  if (quiz.baseline && quiz.warmup){
-    if (quiz.idx >= 2){
-      quiz.warmup = false; quiz.idx = 0; quiz.level = 2; quiz.results = [];
-      toast("ウォームアップ終了。ここから本番です🧠", null, "");
+  // 正誤フィードバックを約0.85秒見せてから次へ（速答ボーナスの計測は回答時点で確定済み）
+  padEnabled(false);
+  const bonus = correct && ms <= 5000;
+  $("qText").innerHTML = correct
+    ? '<span style="color:var(--green)">⭕ 正解！</span>'
+    : `<span style="color:var(--red)">❌ 答えは ${esc(String(quiz.q.answer))}</span>`;
+  $("qSub").innerHTML = `<img class="mi" style="width:26px;height:26px" src="${ICON(correct ? "mood-yummy.png" : "mood-tipsy.png")}" alt="" onerror="fb(this,'${correct ? "😋" : "🥴"}')">`
+    + (bonus ? ' <b style="color:var(--amber)">+0.5 速答ボーナス！</b>' : "");
+  $("qAns").innerHTML = "&nbsp;";
+  setTimeout(() => {
+    if (!quiz.active) return; // フィードバック中に中断されたら進めない
+    if (quiz.baseline && quiz.warmup){
+      if (quiz.idx >= 2){
+        quiz.warmup = false; quiz.idx = 0; quiz.level = 2; quiz.results = [];
+        toast("ウォームアップ終了。ここから本番です🧠", null, "");
+      }
+      nextQuestion();
+      return;
     }
-    nextQuestion();
-    return;
-  }
-  if (quiz.idx < 6){ nextQuestion(); return; }
-  if (quiz.baseline && quiz.block === 1){
-    const sc = scoreQuiz(quiz.results, 2);
-    quiz.blockPcts.push(sc.pct);
-    quiz.block = 2; quiz.idx = 0; quiz.level = 2; quiz.results = [];
-    toast(`1本目 ${sc.pct}%。同じ形式でもう1本！`, null, "");
-    nextQuestion();
-    return;
-  }
-  finishQuiz();
+    if (quiz.idx < 6){ nextQuestion(); return; }
+    if (quiz.baseline && quiz.block === 1){
+      const sc = scoreQuiz(quiz.results, 2);
+      quiz.blockPcts.push(sc.pct);
+      quiz.block = 2; quiz.idx = 0; quiz.level = 2; quiz.results = [];
+      toast(`1本目 ${sc.pct}%。同じ形式でもう1本！`, null, "");
+      nextQuestion();
+      return;
+    }
+    finishQuiz();
+  }, 850);
 }
 function finishQuiz(){
   const sc = scoreQuiz(quiz.results, 2);
@@ -1863,7 +1875,18 @@ function openSafety(){ safetyOn = true; $("safetyText").textContent = SAFETY_NOT
 function closeSafety(){ safetyOn = false; $("safety").classList.remove("show"); }
 
 /* ============ タブ ============ */
+function quizAbort(){
+  clearInterval(quiz.timer);
+  quiz.active = false;
+  quizIdleView();
+  toast("テストを中断しました（ここまでの回答は破棄）", null, "");
+}
 function tab(name){
+  // 測定中の離脱は確認してから破棄（裏でタイマーが回り続けるのを防ぐ）
+  if (quiz.active && name !== "chk"){
+    if (!confirm("測定中です。中断しますか？（ここまでの回答は破棄されます）")) return;
+    quizAbort();
+  }
   ["rec", "log", "chk", "his", "set"].forEach(n => {
     const p = $("p-" + n);
     if (p) p.classList.toggle("on", n === name);
