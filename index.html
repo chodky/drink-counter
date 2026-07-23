@@ -272,6 +272,7 @@
     <div class="banner" id="limitBanner"></div>
     <div class="banner pace" id="paceBanner"></div>
     <div class="banner band" id="bandBanner"></div>
+    <div class="banner warn" id="dangerBanner"></div>
 
     <canvas id="bacCanvas"></canvas>
     <div class="eta">
@@ -424,6 +425,9 @@
 <!-- 感想クイック入力バー -->
 <div class="moodbar" id="moodBar"></div>
 
+<!-- 飲みIQチェックのおさそいバー（3杯ごと） -->
+<div class="moodbar" id="iqNudge"></div>
+
 <!-- 安全モード -->
 <div class="safety" id="safety">
   <h2>安全がいちばん。無理は禁物です。</h2>
@@ -494,12 +498,14 @@ if (session.pledge && session.pledge.lastTrain && !session.pledge.home) session.
 let history  = safeGet("dcHistory", []);
 let reviews  = safeGet("dcReviews", []);
 let myDrink  = safeGet("dcMyDrink", null);
+let afterGlow = safeGet("dcAfter", null); // 終了後も体内の分解が終わるまで残存濃度を表示するための控え
 function save(){
   localStorage.setItem("dcSettings", JSON.stringify(settings));
   localStorage.setItem("dcSession",  JSON.stringify(session));
   localStorage.setItem("dcHistory",  JSON.stringify(history));
   localStorage.setItem("dcReviews",  JSON.stringify(reviews));
   localStorage.setItem("dcMyDrink",  JSON.stringify(myDrink));
+  localStorage.setItem("dcAfter",    JSON.stringify(afterGlow));
 }
 
 /* セッション詳細（レポート用）を履歴エントリに保存・マージする */
@@ -545,7 +551,7 @@ function lastIq(){ for (let i = session.quizzes.length - 1; i >= 0; i--){ if (se
    シート経由は画面内の気分チップで入力済みのため出さない */
 function recordDrinkEntry(def, quick = false){
   const before = soberEta(session, settings, Date.now(), PREDICT_BETA);
-  if (!session.start) session.start = Date.now();
+  if (!session.start){ session.start = Date.now(); afterGlow = null; }
   const g = drinkG(def);
   session.log.push({ t: Date.now(), water: false, emoji: "🍺", ...def, name: def.displayName, g, alcoholG: g });
   save();
@@ -553,16 +559,34 @@ function recordDrinkEntry(def, quick = false){
   if (before && after && after > before) showEtaDelta(Math.round((after - before) / 60000));
   if (navigator.vibrate) navigator.vibrate(25);
   render();
-  // 宣言オーバーの瞬間は感想バーより言い訳シートを優先
+  // 優先順位: 言い訳シート ＞ 飲みIQのおさそい（3杯ごと） ＞ 感想バー
   const p = session.pledge;
   const cnt = session.log.filter(e => !e.water).length;
   if (p && p.cups != null && cnt > p.cups && !p.excused){
-    hideMoodBar();
+    hideMoodBar(); hideIqNudge();
     openExcuse(`「${p.cups}杯まで」のところ${cnt}杯目です`);
+    return;
+  }
+  if (cnt > 0 && cnt % 3 === 0 && !quiz.active){
+    hideMoodBar();
+    showIqNudge(cnt);
     return;
   }
   if (quick) showMoodBar(session.log[session.log.length - 1].t);
 }
+
+/* ============ 飲みIQのおさそい（3杯ごと） ============ */
+let iqNudgeTimer = null;
+function showIqNudge(cnt){
+  const bar = $("iqNudge");
+  bar.innerHTML = `<span style="align-self:center;font-size:13px;font-weight:700"><img class="mi" src="${ICON("tab-check.png")}" alt="" onerror="fb(this,'🧠')"> ${cnt}杯目！飲みIQ測ってみない？</span>
+    <button style="background:var(--amber);color:#221600" onclick="hideIqNudge();startQuiz(false)">測る</button>
+    <button onclick="hideIqNudge()">あとで</button>`;
+  bar.classList.add("show");
+  clearTimeout(iqNudgeTimer);
+  iqNudgeTimer = setTimeout(hideIqNudge, 12000);
+}
+function hideIqNudge(){ $("iqNudge").classList.remove("show"); }
 function addWater(){
   if (!session.start) session.start = Date.now();
   session.log.push({ t: Date.now(), name: "水", emoji: "💧", icon: "drink-water.png", g: 0, water: true });
@@ -607,6 +631,9 @@ function render(){
   } else if (session.start){
     pr.style.display = "flex";
     pr.innerHTML = `<span style="color:var(--sub);font-weight:400">${kp} 飲み会 記録中</span><button onclick="openKanpai()">会の情報を付ける</button>`;
+  } else if (afterGlow){
+    pr.style.display = "flex";
+    pr.innerHTML = `<span style="color:var(--sub);font-weight:400">🏁 飲み会は終了。体内では分解が続いています</span>`;
   } else pr.style.display = "none";
 
   const drinks = session.log.filter(e => !e.water);
@@ -656,21 +683,45 @@ function render(){
     bb.className = "banner band show"; bb.textContent = (bandType === "lastTrain" ? "🚃 " : "🌙 ") + bandState.msg;
   } else { bb.className = "banner band"; bandState.type = null; }
 
-  // BAC・シラフ予測
-  const bac = bacAt(session, settings, now);
+  // 失敗実績ラインアラート（振り返りの「何杯目からおかしくなった」の蓄積から）
+  const db = $("dangerBanner");
+  const fsl = failStartLine();
+  const dTier = (session.start && drinks.length > 0 && fsl)
+    ? (total >= fsl.g ? "over" : total >= fsl.g * 0.8 ? "near" : "") : "";
+  if (dTier !== db.dataset.tier){
+    db.dataset.tier = dTier;
+    if (dTier === "over"){
+      db.className = "banner stop show";
+      db.textContent = `🚨 記憶が怪しくなり始めた実績ライン（${fsl.g}g）を超えました。ここからの記憶は自己責任です`;
+      if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
+    } else if (dTier === "near"){
+      db.className = "banner warn show";
+      db.textContent = `⚠️ 失敗実績ライン ${fsl.g}g まで あと${Math.max(0, Math.round((fsl.g - total) * 10) / 10)}g`;
+    } else db.className = "banner warn";
+  }
+
+  // BAC・消失めやす（終了後は afterGlow の控えで分解が終わるまで表示を続ける）
+  let viewSess = session;
+  if (!session.start && afterGlow){
+    const ag = { start: afterGlow.start, log: afterGlow.log };
+    const agEta = soberEta(ag, settings, now, PREDICT_BETA);
+    if (!agEta || now >= agEta){ afterGlow = null; save(); } // 計算上ほぼゼロになったら控えを破棄
+    else viewSess = ag;
+  }
+  const bac = bacAt(viewSess, settings, now);
   const st = stageOf(bac);
   $("stageName").textContent = st.name;
   $("stageEmoji").innerHTML = STAGE_ICON[st.name]
     ? `<img class="si" src="${ICON(STAGE_ICON[st.name])}" alt="" onerror="fb(this,'${st.emoji}')">` : st.emoji;
   $("stageBac").textContent = `推定血中アルコール濃度 ${bac.toFixed(3)}%（${Math.round(bac * 1000)}mg/dL）`;
-  const eta = soberEta(session, settings, now, PREDICT_BETA);
+  const eta = soberEta(viewSess, settings, now, PREDICT_BETA);
   if (eta){
     const d = new Date(eta);
     $("etaTime").textContent = (d.getDate() !== new Date(now).getDate() ? "翌 " : "") + hm(eta);
     $("etaSub").textContent = "アルコール消失めやす（あと" + ((eta - now) / 3600000).toFixed(1) + "時間）";
   } else { $("etaTime").textContent = "—"; $("etaSub").textContent = "アルコール消失めやす（飲むと後ろにずれます）"; }
-  renderHangover(now);
-  drawSessionGraph($("bacCanvas"), session, now, "今");
+  renderHangover(now, viewSess, session.start ? session.wakeTime : (afterGlow && afterGlow.wakeTime));
+  drawSessionGraph($("bacCanvas"), viewSess, now, "今");
 
   // 飲みIQチップ・チェック促し
   const iq = lastIq();
@@ -687,33 +738,36 @@ function render(){
 }
 
 /* ============ 二日酔い予報 ============ */
-function wakeMs(now){
-  if (!session.wakeTime) return null;
-  const [h, m] = session.wakeTime.split(":").map(Number);
+function wakeMs(now, wakeTime){
+  if (!wakeTime) return null;
+  const [h, m] = wakeTime.split(":").map(Number);
   if (!Number.isFinite(h)) return null;
   const d = new Date(now);
   d.setHours(h, m || 0, 0, 0);
   while (d.getTime() <= now) d.setDate(d.getDate() + 1);
   return d.getTime();
 }
-function renderHangover(now){
+function renderHangover(now, sess, wakeTime){
   const box = $("hangover");
-  const wake = wakeMs(now);
-  const drinks = session.log.filter(e => !e.water);
-  if (!wake || !session.start || drinks.length === 0){ box.style.display = "none"; return; }
+  const wake = wakeMs(now, wakeTime);
+  const drinks = (sess.log || []).filter(e => !e.water);
+  if (!wake || !sess.start || drinks.length === 0){ box.style.display = "none"; return; }
+  const ended = !session.start; // 終了後モードでは「もう1杯なら」の行を出さない
   const mg = b => Math.round(b * 1000);
-  const rNow = bacAtHybrid(session, settings, now, wake, PREDICT_BETA);      // いま締めた場合の起床時残存
+  const rNow = bacAtHybrid(sess, settings, now, wake, PREDICT_BETA);      // いま締めた場合の起床時残存
   const lastG = drinks[drinks.length - 1].g || 20;
-  const hypo = { ...session, log: [...session.log, { t: now, g: lastG, water: false }] };
-  const rMore = bacAtHybrid(hypo, settings, now, wake, PREDICT_BETA);        // もう1杯（直前と同じ）飲んだ場合
+  const hypo = { ...sess, log: [...sess.log, { t: now, g: lastG, water: false }] };
+  const rMore = bacAtHybrid(hypo, settings, now, wake, PREDICT_BETA);      // もう1杯（直前と同じ）飲んだ場合
   let face, msg;
   if (rNow < 0.001){ face = "☀️"; msg = "朝はスッキリ予報"; }
   else if (rNow < 0.01){ face = "🌤"; msg = "うっすら残る予報"; }
   else if (rNow < 0.03){ face = "🌧"; msg = "だるい朝コース"; }
   else { face = "⛈"; msg = "ガチ二日酔いコース"; }
   box.style.display = "flex";
-  box.innerHTML = `<div><div class="n" style="font-size:13.5px">${face} 二日酔い予報（${esc(session.wakeTime.replace(/^0/, ""))}ごろ起床）: ${msg}</div>
-    <div class="b num">いま締める→朝 ${mg(rNow)}mg/dL ／ もう1杯（${esc(String(lastG))}g）→朝 ${mg(rMore)}mg/dL</div></div>`;
+  box.innerHTML = `<div><div class="n" style="font-size:13.5px">${face} 二日酔い予報（${esc(wakeTime.replace(/^0/, ""))}ごろ起床）: ${msg}</div>
+    <div class="b num">${ended
+      ? `起床時の残存みこみ 朝 ${mg(rNow)}mg/dL`
+      : `いま締める→朝 ${mg(rNow)}mg/dL ／ もう1杯（${esc(String(lastG))}g）→朝 ${mg(rMore)}mg/dL`}</div></div>`;
 }
 
 /* ============ ログタブ（今夜のタイムライン） ============ */
@@ -1047,6 +1101,7 @@ function openScorecard(){
     const ex2 = history.find(h => h.date === key);
     if (ex2){ ex2.g = Math.round((ex2.g + card.totalG) * 10) / 10; ex2.cups = (ex2.cups || 0) + drinks.length; ex2.grade = card.grade; ex2.points = card.points; mergeDetail(ex2, detail); }
     else history.push({ date: key, g: card.totalG, cups: drinks.length, grade: card.grade, points: card.points, detail });
+    afterGlow = { start: session.start, log: session.log, wakeTime: session.wakeTime }; // 終了後も分解が終わるまで濃度表示を続ける
     session = emptySession();
     save();
     closeScorecard();
@@ -1177,7 +1232,17 @@ function renderHistory(){
   renderAnalysis();
 }
 
-let rev = { hangover: 0, regret: 0, symptoms: [], meds: [] };
+/* 失敗開始ライン: 「失敗した」夜の“おかしくなり始めた累積g”直近3件の中央値 */
+const FAILS = ["記憶なし", "失言", "二日酔い", "寝坊", "忘れ物", "使いすぎ", "吐いた"];
+function failStartLine(){
+  const t = reviews.filter(r => r.outcome === "fail" && Number.isFinite(r.troubleG))
+    .slice(-3).map(r => r.troubleG).sort((a, b) => a - b);
+  if (!t.length) return null;
+  const g = t.length % 2 ? t[(t.length - 1) / 2] : Math.round((t[t.length / 2 - 1] + t[t.length / 2]) / 2 * 10) / 10;
+  return { g, n: t.length };
+}
+
+let rev = { hangover: 0, regret: 0, symptoms: [], meds: [], outcome: null, fails: [], troubleCups: null };
 function renderReviewCard(){
   const card = $("reviewCard");
   const target = [...history].sort((a, b) => b.date.localeCompare(a.date))
@@ -1186,9 +1251,25 @@ function renderReviewCard(){
   if (card.dataset.date === target.date) return; // 入力中の再描画で消さない
   card.dataset.date = target.date;
   card.style.display = "block";
-  rev = { hangover: 0, regret: 0, symptoms: [], meds: [] };
+  rev = { hangover: 0, regret: 0, symptoms: [], meds: [], outcome: null, fails: [], troubleCups: null };
+  const dts = target.detail ? target.detail.log.filter(e => !e.water) : [];
+  const cupsRow = dts.length ? `
+    <div style="font-size:12.5px;color:var(--sub)">何杯目あたりからおかしくなった？（次回のアラートに使います）</div>
+    <div class="chips" id="rvTrb">${dts.map((e, i) =>
+      `<button onclick="rvTrouble(${i + 1},this)">${i + 1}杯目<span style="color:var(--sub);font-size:10px">（${esc(e.name)}）</span></button>`).join("")}
+      <button onclick="rvTrouble(null,this)">覚えてない</button></div>` : "";
   card.innerHTML = `
     <h2>☀️ 振り返り入力 — ${target.date}（${target.g}g）</h2>
+    <div style="font-size:12.5px;color:var(--sub)">今夜（昨夜）どうだった？</div>
+    <div class="chips" id="rvOut">
+      <button onclick="rvOutcome('ok',this)">✅ 問題なし</button>
+      <button onclick="rvOutcome('fail',this)">⚠️ 失敗した</button>
+    </div>
+    <div id="rvFailSec" style="display:none">
+      <div style="font-size:12.5px;color:var(--sub)">何をやらかした？（複数選択）</div>
+      <div class="chips">${FAILS.map(f => `<button onclick="tgl(this,'fails','${f}')">${f}</button>`).join("")}</div>
+      ${cupsRow}
+    </div>
     <div class="slider-row"><label>二日酔い度</label><input type="range" min="0" max="10" value="0" id="rvH"><span class="val num" id="rvHv">0</span></div>
     <div class="slider-row"><label>後悔度</label><input type="range" min="0" max="10" value="0" id="rvR"><span class="val num" id="rvRv">0</span></div>
     <div style="font-size:12.5px;color:var(--sub);margin-top:6px">症状（複数選択）</div>
@@ -1207,11 +1288,31 @@ function tgl(btn, field, val){
   const i = arr.indexOf(val);
   i >= 0 ? arr.splice(i, 1) : arr.push(val);
 }
+function rvOutcome(o, btn){
+  rev.outcome = o;
+  document.querySelectorAll("#rvOut button").forEach(b => b.classList.toggle("sel", b === btn));
+  $("rvFailSec").style.display = o === "fail" ? "block" : "none";
+}
+function rvTrouble(n, btn){
+  rev.troubleCups = n;
+  document.querySelectorAll("#rvTrb button").forEach(b => b.classList.toggle("sel", b === btn));
+}
 function saveReview(date, g){
   const free = $("rvMedFree").value.trim();
+  // 「何杯目から」を、その夜のログの累積純アルコールgへ変換して保存
+  let troubleG;
+  const h = history.find(x => x.date === date);
+  if (rev.outcome === "fail" && rev.troubleCups && h && h.detail){
+    const ds = h.detail.log.filter(e => !e.water);
+    troubleG = Math.round(ds.slice(0, rev.troubleCups).reduce((s, e) => s + e.g, 0) * 10) / 10;
+  }
   reviews.push({ date, g, hangover: rev.hangover, regret: rev.regret,
     symptoms: [...rev.symptoms], meds: free ? [...rev.meds, free] : [...rev.meds],
-    memo: $("rvMemo").value.trim() });
+    memo: $("rvMemo").value.trim(),
+    outcome: rev.outcome || undefined,
+    fails: rev.outcome === "fail" && rev.fails.length ? [...rev.fails] : undefined,
+    troubleCups: rev.outcome === "fail" && rev.troubleCups ? rev.troubleCups : undefined,
+    troubleG });
   save();
   $("reviewCard").dataset.date = "";
   renderHistory();
@@ -1231,11 +1332,15 @@ function renderAnalysis(){
     el.textContent = "振り返りが3件たまると、症状と飲酒量の関係を表示します。";
   }
   const fl = estimateFailureLine(reviews);
-  $("failLine").innerHTML = fl
+  const fsl = failStartLine();
+  $("failLine").innerHTML = (fsl
+    ? `<div class="failline" style="border-color:rgba(255,92,92,.5);background:rgba(255,92,92,.08)">🚨 失敗開始ライン（直近${fsl.n}件の中央値）: <span class="fv num" style="color:var(--red)">${fsl.g}g</span><br>
+       <span style="font-size:12px;color:var(--sub)">「このあたりから記憶・様子がおかしくなった」実績。飲み会中、80%接近と超過でアラートが出ます</span></div>`
+    : "") + (fl
     ? `<div class="failline">📉 あなたの失敗ライン推定: <span class="fv num">${fl}g</span><br>
        <span style="font-size:12px;color:var(--sub)">このあたりから翌朝がつらくなりやすい傾向です</span><br>
        <button class="bigbtn ghost" style="margin-top:8px" onclick="applyFail(${fl})">上限を ${fl}g に設定する</button></div>`
-    : `<div class="note">振り返り（後悔度・二日酔い度）が増えると、自分の限界ラインを推定します。</div>`;
+    : (fsl ? "" : `<div class="note">振り返り（後悔度・二日酔い度）が増えると、自分の限界ラインを推定します。</div>`));
   const recent = [...reviews].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
   $("revList").innerHTML = recent.length
     ? `<div style="font-size:12.5px;color:var(--sub);margin-top:12px;font-weight:600">過去の振り返り</div>` +
@@ -1613,7 +1718,7 @@ function kpSelWake(i){
 }
 function startParty(){
   const editing = session.rounds.length > 0;
-  if (!session.start) session.start = Date.now();
+  if (!session.start){ session.start = Date.now(); afterGlow = null; }
   session.name = kpNameDraft.trim();
   if (editing) session.rounds[session.rounds.length - 1].label = kpType; // 途中編集は現在の会のラベルだけ更新
   else session.rounds = [{ label: kpType, t: session.start }];
@@ -1859,13 +1964,13 @@ function exportData(){
 }
 function resetTonight(){
   if (confirm("今夜の記録（飲み会の開始・ログ・テスト結果）をリセットします。よろしいですか？")){
-    session = emptySession(); save(); render();
+    session = emptySession(); afterGlow = null; save(); render();
     toast("今夜の記録をリセットしました", null, "");
   }
 }
 function clearAll(){
   if (confirm("今夜の記録・履歴・振り返りをすべて削除します。よろしいですか？（設定は残ります）")){
-    session = emptySession(); history = []; reviews = []; save(); render();
+    session = emptySession(); afterGlow = null; history = []; reviews = []; save(); render();
     toast("すべてのデータを削除しました", null, "");
   }
 }
